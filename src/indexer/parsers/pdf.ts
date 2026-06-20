@@ -1,6 +1,6 @@
 import fs from 'fs/promises';
 
-// pdf-parse types don't expose a callable default in Node16 module resolution
+// pdf-parse v1 exports a callable function; use require for CJS interop
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const pdfParse = require('pdf-parse') as (buf: Buffer) => Promise<{ text: string }>;
 

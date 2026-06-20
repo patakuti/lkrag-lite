@@ -251,7 +251,7 @@ export function insertChunk(
 export function insertVec(chunkId: number, workspaceId: number, embedding: number[]): void {
   getDb()
     .prepare('INSERT INTO vec_chunks (rowid, workspace_id, embedding) VALUES (?, ?, ?)')
-    .run(chunkId, workspaceId, new Float32Array(embedding));
+    .run(BigInt(chunkId), BigInt(workspaceId), new Float32Array(embedding));
 }
 
 // ---------- search ----------
@@ -278,7 +278,7 @@ export function searchChunks(workspaceId: number, queryVec: number[], topK: numb
       AND v.embedding MATCH ?
       AND k = ?
     ORDER BY v.distance
-  `).all(workspaceId, new Float32Array(queryVec), topK) as SearchResult[];
+  `).all(BigInt(workspaceId), new Float32Array(queryVec), topK) as SearchResult[];
   return rows;
 }
 

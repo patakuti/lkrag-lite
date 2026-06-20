@@ -4,6 +4,8 @@ import dotenv from 'dotenv';
 import { initDb } from './db/sqlite.js';
 import workspacesRouter from './routes/workspaces.js';
 import indexRouter from './routes/index_route.js';
+import searchRouter from './routes/search.js';
+import configRouter from './routes/config.js';
 
 dotenv.config();
 
@@ -22,6 +24,8 @@ app.get('/api/health', (_req, res) => {
 
 app.use('/api/workspaces', workspacesRouter);
 app.use('/api/index', indexRouter);
+app.use('/api/search', searchRouter);
+app.use('/api/config', configRouter);
 
 // Static frontend
 app.use(express.static(path.join(__dirname, '..', 'public')));

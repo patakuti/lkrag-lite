@@ -14,14 +14,25 @@ export interface LLMResult {
 
 function buildContext(chunks: RetrievedChunk[]): string {
   return chunks
-    .map((c) => `[${c.n}] (${c.filePath})\n${c.content}`)
-    .join('\n\n---\n\n');
+    .map((c) => `<source id="${c.n}" file="${c.filePath}">\n${c.content}\n</source>`)
+    .join('\n\n');
 }
 
 const SYSTEM_PROMPT =
-  'You are a helpful assistant. Answer the user\'s question based ONLY on the provided context. ' +
-  'For each claim, cite the source using the reference number like [1], [2], etc. ' +
-  'If the context does not contain enough information, say so clearly instead of guessing.';
+  'You are a helpful assistant. Answer the user\'s question based ONLY on the provided source documents. ' +
+  'When citing a source, use ONLY the plain bracket format: [1], [2], [3], etc., where the number matches the source id attribute. ' +
+  'Do NOT use any other citation format such as [1†...], [2†source], or 【n†...】. ' +
+  'Output your answer in Markdown format. ' +
+  'If the sources do not contain enough information, say so clearly instead of guessing.';
+
+/** Normalize unusual LLM citation formats (e.g. [1†L2-L9], 【2†source】) to plain [n]. */
+function normalizeCitations(text: string): string {
+  // 【n†...】 → [n]
+  text = text.replace(/【(\d+)[†][^】]*】/g, '[$1]');
+  // [n†...] → [n]
+  text = text.replace(/\[(\d+)[†][^\]]*\]/g, '[$1]');
+  return text;
+}
 
 // ---------- OpenAI / OpenAI-compatible ----------
 
@@ -124,6 +135,8 @@ export async function generateAnswer(
         : 'https://api.openai.com/v1';
     answer = await callOpenAI(baseUrl, apiKey, model, SYSTEM_PROMPT, userPrompt);
   }
+
+  answer = normalizeCitations(answer);
 
   const citations: Citation[] = chunks.map((c) => ({
     n: c.n,

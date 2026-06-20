@@ -166,26 +166,37 @@ document.getElementById('search-form').addEventListener('submit', async (e) => {
 });
 
 function renderAnswer({ answer, citations }) {
-  // Replace [n] with clickable links
-  const linked = answer.replace(/\[(\d+)\]/g, (_, n) => {
+  // Insert cite anchors as placeholder tokens before Markdown rendering,
+  // then restore them after, so marked doesn't escape the HTML.
+  const PLACEHOLDER = '\x00CITE$1\x00';
+  const withPlaceholders = answer.replace(/\[(\d+)\]/g, PLACEHOLDER);
+
+  // Render Markdown → HTML
+  let html = typeof marked !== 'undefined'
+    ? marked.parse(withPlaceholders)
+    : withPlaceholders.replace(/\n/g, '<br>');
+
+  // Replace placeholders with clickable links
+  html = html.replace(/\x00CITE(\d+)\x00/g, (_, n) => {
     const c = citations.find((x) => x.n === Number(n));
     if (!c) return `[${n}]`;
     return `<a class="cite-link" href="#cite-${n}" title="${esc(c.path)}">[${n}]</a>`;
   });
 
-  document.getElementById('answer-text').innerHTML = linked;
+  document.getElementById('answer-text').innerHTML = html;
 
   const citSection = document.getElementById('citations-section');
   const citList    = document.getElementById('citation-list');
 
   if (citations.length > 0) {
+    // Use data-path attribute to avoid inline onclick quoting issues
     citList.innerHTML = citations.map((c) => `
       <div class="citation-item" id="cite-${c.n}">
         <div class="citation-header">
           <span class="citation-n">[${c.n}]</span>
           <span class="citation-path">${esc(c.path)}</span>
           <span class="citation-score">score: ${c.score}</span>
-          <button class="btn-open btn-link" onclick="openFile(${JSON.stringify(c.path)})">開く</button>
+          <button class="btn-open btn-link" data-path="${esc(c.path)}">開く</button>
         </div>
         <div class="citation-snippet">"${esc(c.snippet)}"</div>
       </div>
@@ -197,6 +208,12 @@ function renderAnswer({ answer, citations }) {
 
   document.getElementById('answer-section').classList.remove('hidden');
 }
+
+// Event delegation for open buttons (avoids inline onclick quoting issues)
+document.getElementById('citation-list').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-path]');
+  if (btn) openFile(btn.dataset.path);
+});
 
 async function openFile(path) {
   try {

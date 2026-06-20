@@ -7,6 +7,7 @@ CLAUDE.md
 # Dependencies / build output
 node_modules/
 dist/
+public/marked.min.js
 
 # Runtime data and secrets
 data/

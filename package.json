@@ -5,7 +5,7 @@
   "license": "MIT",
   "main": "dist/server.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node -e \"require('fs').copyFileSync('node_modules/marked/lib/marked.umd.js','public/marked.min.js')\"",
     "start": "node dist/server.js",
     "dev": "tsx watch src/server.ts"
   },
@@ -16,6 +16,7 @@
     "express": "^5.2.1",
     "fast-glob": "^3.3.3",
     "mammoth": "^1.12.0",
+    "marked": "^18.0.5",
     "pdf-parse": "^1.1.1",
     "sqlite-vec": "^0.1.9",
     "xlsx": "^0.18.5"

@@ -57,9 +57,15 @@ h3 { font-size: 13px; margin: 12px 0 8px; color: #555; }
 /* Answer */
 #answer-text {
   line-height: 1.7;
-  white-space: pre-wrap;
   word-break: break-word;
 }
+#answer-text p  { margin: 0 0 0.8em; }
+#answer-text h1,#answer-text h2,#answer-text h3 { margin: 1em 0 0.4em; font-size: 1em; font-weight: 700; }
+#answer-text ul,#answer-text ol { margin: 0 0 0.8em 1.4em; }
+#answer-text li { margin-bottom: 0.2em; }
+#answer-text code { background:#f0f0f0; border-radius:3px; padding:0 3px; font-size:0.9em; }
+#answer-text pre { background:#f0f0f0; border-radius:4px; padding:10px; overflow-x:auto; margin:0 0 0.8em; }
+#answer-text pre code { background:none; padding:0; }
 #answer-text a.cite-link {
   color: #1a73e8; text-decoration: none; font-size: 11px;
   vertical-align: super; font-weight: 600;

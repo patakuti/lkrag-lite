@@ -1,14 +1,17 @@
 import { Router } from 'express';
 import { retrieve } from '../search/retriever.js';
 import { generateAnswer, rewriteQuery, ConversationMessage } from '../search/llm.js';
+import { appendChatMessage, getChatSession } from '../db/sqlite.js';
 
 const router = Router();
 
 router.post('/', (req, res) => {
   void (async () => {
-    const { query, history } = req.body as {
+    const { query, history, session_id, skip_rag } = req.body as {
       query?: string;
       history?: ConversationMessage[];
+      session_id?: string;
+      skip_rag?: boolean;
     };
 
     if (!query || typeof query !== 'string' || !query.trim()) {
@@ -24,14 +27,32 @@ router.post('/', (req, res) => {
         )
       : [];
 
+    const sessionId = typeof session_id === 'string' && session_id.trim()
+      ? session_id.trim()
+      : null;
+
+    // Validate session exists before processing
+    if (sessionId && !getChatSession(sessionId)) {
+      res.status(404).json({ error: 'Session not found' });
+      return;
+    }
+
     try {
+      if (sessionId) {
+        appendChatMessage(sessionId, 'user', query.trim(), null);
+      }
+
       const { searchQuery, fallback: rewriterFallback } = await rewriteQuery(
         query.trim(),
         safeHistory
       );
 
-      const chunks = await retrieve(searchQuery);
-      const result = await generateAnswer(query.trim(), chunks, safeHistory);
+      const chunks = skip_rag ? [] : await retrieve(searchQuery);
+      const result = await generateAnswer(query.trim(), chunks, safeHistory, skip_rag);
+
+      if (sessionId) {
+        appendChatMessage(sessionId, 'assistant', result.answer, JSON.stringify(result.citations));
+      }
 
       res.json({ ...result, rewriterFallback });
     } catch (err) {

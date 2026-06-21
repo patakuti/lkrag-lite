@@ -14,6 +14,7 @@ Lightweight, easy-to-deploy RAG (Retrieval-Augmented Generation) system for loca
 - **Runtime settings UI**: adjust Top K, Min Similarity, and Output Instructions from the browser without restarting the server
 - **Multi-turn chat**: conversational UI that carries context across turns
 - **Query rewriter**: LLM automatically rewrites follow-up questions into clean, standalone RAG search queries
+- **Chat history**: chats are auto-saved to SQLite and can be resumed at any time; history is shown across all workspaces
 
 ## Requirements
 
@@ -65,8 +66,10 @@ Open http://localhost:3456 in your browser.
 3. **Index**: click "Update" (incremental) or "Full Rebuild"
 4. **Chat**: type a question and click "Send"; follow-up questions carry conversation context automatically
 5. **Citations**: click `[n]` in the answer or "Open" in the References section to open the source file
-6. **New Chat**: click "New Chat" to clear the conversation history
-7. **Settings**: adjust Top K, Min Similarity, and Output Instructions in the Settings panel; click "Reload .env" to reset to the values in `.env`
+6. **Chat history**: past chats appear in the "Chat History" panel; click one to resume (workspace switches automatically)
+7. **New Chat**: click "New Chat" to start a fresh conversation
+8. **Delete chats**: click "×" next to a chat to delete it, or "Delete All" to clear all history
+9. **Settings**: adjust Top K, Min Similarity, and Output Instructions in the Settings panel; click "Reload .env" to reset to the values in `.env`
 
 ## Changing the Embedding Model
 

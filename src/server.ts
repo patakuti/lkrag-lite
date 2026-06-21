@@ -8,6 +8,7 @@ import searchRouter from './routes/search.js';
 import configRouter from './routes/config.js';
 import openRouter from './routes/open.js';
 import browseRouter from './routes/browse.js';
+import chatsRouter from './routes/chats.js';
 
 dotenv.config();
 
@@ -46,6 +47,7 @@ app.use('/api/search', searchRouter);
 app.use('/api/config', configRouter);
 app.use('/api/open', openRouter);
 app.use('/api/browse', browseRouter);
+app.use('/api/chats', chatsRouter);
 
 // Static frontend
 app.use(express.static(path.join(__dirname, '..', 'public')));

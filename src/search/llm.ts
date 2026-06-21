@@ -11,6 +11,12 @@ export interface Citation {
 export interface LLMResult {
   answer: string;
   citations: Citation[];
+  rewriterFallback: boolean;
+}
+
+export interface ConversationMessage {
+  role: 'user' | 'assistant';
+  content: string;
 }
 
 function buildContext(chunks: RetrievedChunk[]): string {
@@ -26,11 +32,15 @@ const SYSTEM_PROMPT =
   'Output your answer in Markdown format. ' +
   'If the sources do not contain enough information, say so clearly instead of guessing.';
 
+const REWRITER_SYSTEM_PROMPT =
+  'You are a search query optimizer. Given a conversation history and the latest user message, ' +
+  'generate a concise, standalone search query that captures the key information need for a vector database lookup. ' +
+  'The query should be topically focused and free of conversational filler. ' +
+  'Output ONLY a JSON object matching the schema: {"search_query": "<query string>"}.';
+
 /** Normalize unusual LLM citation formats (e.g. [1†L2-L9], 【2†source】) to plain [n]. */
 function normalizeCitations(text: string): string {
-  // 【n†...】 → [n]
   text = text.replace(/【(\d+)[†][^】]*】/g, '[$1]');
-  // [n†...] → [n]
   text = text.replace(/\[(\d+)[†][^\]]*\]/g, '[$1]');
   return text;
 }
@@ -38,6 +48,36 @@ function normalizeCitations(text: string): string {
 // ---------- OpenAI / OpenAI-compatible ----------
 
 async function callOpenAI(
+  baseUrl: string,
+  apiKey: string,
+  model: string,
+  systemPrompt: string,
+  messages: { role: string; content: string }[]
+): Promise<string> {
+  const res = await fetch(`${baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: 'system', content: systemPrompt }, ...messages],
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`LLM API error ${res.status}: ${text}`);
+  }
+
+  const json = await res.json() as {
+    choices: { message: { content: string } }[];
+  };
+  return json.choices[0].message.content;
+}
+
+async function callOpenAIStructured(
   baseUrl: string,
   apiKey: string,
   model: string,
@@ -54,14 +94,29 @@ async function callOpenAI(
       model,
       messages: [
         { role: 'system', content: systemPrompt },
-        { role: 'user',   content: userPrompt },
+        { role: 'user', content: userPrompt },
       ],
+      response_format: {
+        type: 'json_schema',
+        json_schema: {
+          name: 'search_query',
+          schema: {
+            type: 'object',
+            properties: {
+              search_query: { type: 'string' },
+            },
+            required: ['search_query'],
+            additionalProperties: false,
+          },
+          strict: true,
+        },
+      },
     }),
   });
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`LLM API error ${res.status}: ${text}`);
+    throw new Error(`Query rewriter API error ${res.status}: ${text}`);
   }
 
   const json = await res.json() as {
@@ -76,7 +131,7 @@ async function callAnthropic(
   apiKey: string,
   model: string,
   systemPrompt: string,
-  userPrompt: string
+  messages: { role: string; content: string }[]
 ): Promise<string> {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -89,7 +144,7 @@ async function callAnthropic(
       model,
       max_tokens: 2048,
       system: systemPrompt,
-      messages: [{ role: 'user', content: userPrompt }],
+      messages,
     }),
   });
 
@@ -105,12 +160,50 @@ async function callAnthropic(
   return block?.text ?? '';
 }
 
-// ---------- public ----------
+// ---------- Query Rewriter ----------
+
+export async function rewriteQuery(
+  userInput: string,
+  history: ConversationMessage[]
+): Promise<{ searchQuery: string; fallback: boolean }> {
+  const provider = process.env.QUERY_REWRITER_PROVIDER ?? 'openai';
+  const model    = process.env.QUERY_REWRITER_MODEL    ?? 'gpt-4o-mini';
+  const apiKey   = process.env.OPENAI_API_KEY ?? '';
+  const baseUrl  =
+    provider === 'openai-compatible'
+      ? (process.env.OPENAI_COMPATIBLE_BASE_URL ?? 'http://localhost:4000/v1').replace(/\/$/, '')
+      : 'https://api.openai.com/v1';
+
+  const historyText = history
+    .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
+    .join('\n');
+  const userPrompt = history.length > 0
+    ? `Conversation so far:\n${historyText}\n\nLatest user message: ${userInput}`
+    : `User message: ${userInput}`;
+
+  try {
+    const raw = await callOpenAIStructured(baseUrl, apiKey, model, REWRITER_SYSTEM_PROMPT, userPrompt);
+    const parsed = JSON.parse(raw) as { search_query?: unknown };
+    const searchQuery = typeof parsed.search_query === 'string' && parsed.search_query.trim()
+      ? parsed.search_query.trim()
+      : null;
+
+    if (!searchQuery) {
+      return { searchQuery: userInput, fallback: true };
+    }
+    return { searchQuery, fallback: false };
+  } catch {
+    return { searchQuery: userInput, fallback: true };
+  }
+}
+
+// ---------- Answer generation ----------
 
 export async function generateAnswer(
   query: string,
-  chunks: RetrievedChunk[]
-): Promise<LLMResult> {
+  chunks: RetrievedChunk[],
+  history: ConversationMessage[] = []
+): Promise<Omit<LLMResult, 'rewriterFallback'>> {
   if (chunks.length === 0) {
     return {
       answer: 'No relevant documents found in the active workspace.',
@@ -121,23 +214,28 @@ export async function generateAnswer(
   const provider = process.env.LLM_PROVIDER ?? 'openai';
   const model    = process.env.LLM_MODEL    ?? 'gpt-4o-mini';
   const context  = buildContext(chunks);
-  const userPrompt = `Context:\n${context}\n\nQuestion: ${query}`;
 
   const extra = runtimeConfig.outputInstructions.trim();
   const systemPrompt = extra ? `${SYSTEM_PROMPT}\n${extra}` : SYSTEM_PROMPT;
+
+  // Build messages: history turns + current user message with RAG context
+  const messages: { role: string; content: string }[] = [
+    ...history.map((m) => ({ role: m.role, content: m.content })),
+    { role: 'user', content: `Context:\n${context}\n\nQuestion: ${query}` },
+  ];
 
   let answer: string;
 
   if (provider === 'anthropic') {
     const apiKey = process.env.ANTHROPIC_API_KEY ?? '';
-    answer = await callAnthropic(apiKey, model, systemPrompt, userPrompt);
+    answer = await callAnthropic(apiKey, model, systemPrompt, messages);
   } else {
     const apiKey = process.env.OPENAI_API_KEY ?? '';
     const baseUrl =
       provider === 'openai-compatible'
         ? (process.env.OPENAI_COMPATIBLE_BASE_URL ?? 'http://localhost:4000/v1').replace(/\/$/, '')
         : 'https://api.openai.com/v1';
-    answer = await callOpenAI(baseUrl, apiKey, model, systemPrompt, userPrompt);
+    answer = await callOpenAI(baseUrl, apiKey, model, systemPrompt, messages);
   }
 
   answer = normalizeCitations(answer);

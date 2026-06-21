@@ -23,6 +23,7 @@ let isUpdatingDropdown = false;
 async function loadWorkspaces() {
   workspaces = await api('GET', '/workspaces');
   renderWorkspaceDropdown();
+  updateChatTitle();
   await loadIndexStats();
 }
 
@@ -54,10 +55,19 @@ function renderWorkspaceDropdown() {
   isUpdatingDropdown = false;
 }
 
+function updateChatTitle() {
+  const active = workspaces.find((ws) => ws.is_active);
+  const el = document.getElementById('chat-title');
+  el.textContent = active ? active.name : 'Select a workspace to start chatting';
+}
+
 document.getElementById('ws-select').addEventListener('change', async (e) => {
   if (isUpdatingDropdown) return;
   const id = Number(e.target.value);
   await api('PUT', `/workspaces/${id}/activate`);
+  workspaces = await api('GET', '/workspaces');
+  updateChatTitle();
+  clearChat();
   await loadIndexStats();
 });
 
@@ -81,6 +91,8 @@ document.getElementById('btn-delete-ws').addEventListener('click', async () => {
     }
 
     renderWorkspaceDropdown();
+    updateChatTitle();
+    clearChat();
     await loadIndexStats();
   } catch (err) {
     alert('Failed to delete workspace: ' + err.message);
@@ -264,32 +276,133 @@ function clearIndexError() {
   document.getElementById('index-error').classList.add('hidden');
 }
 
-// ---------- Search ----------
+// ---------- Chat ----------
+
+/** Each entry: { role: 'user'|'assistant', content: string } */
+let chatHistory = [];
+let turnCounter = 0;
+
+function clearChat() {
+  chatHistory = [];
+  turnCounter = 0;
+  document.getElementById('chat-thread').innerHTML = '';
+}
+
+document.getElementById('btn-new-chat').addEventListener('click', () => {
+  if (chatHistory.length > 0 && !confirm('Start a new chat? The current conversation will be cleared.')) return;
+  clearChat();
+});
 
 document.getElementById('search-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const query = document.getElementById('search-query').value.trim();
   if (!query) return;
 
-  document.getElementById('search-error').classList.add('hidden');
-  document.getElementById('answer-section').classList.add('hidden');
-  document.getElementById('search-spinner').classList.remove('hidden');
-  document.getElementById('btn-search').disabled = true;
+  const errorEl = document.getElementById('search-error');
+  errorEl.classList.add('hidden');
+
+  const btnSearch = document.getElementById('btn-search');
+  btnSearch.disabled = true;
+  document.getElementById('search-query').value = '';
+
+  appendUserBubble(query);
+  const thinkingEl = appendThinking();
 
   try {
-    const result = await api('POST', '/search', { query });
-    renderAnswer(result);
+    const result = await api('POST', '/search', {
+      query,
+      history: chatHistory,
+    });
+
+    thinkingEl.remove();
+    appendAIBubble(result);
+
+    chatHistory.push({ role: 'user', content: query });
+    chatHistory.push({ role: 'assistant', content: result.answer });
   } catch (err) {
-    const el = document.getElementById('search-error');
-    el.textContent = 'Error: ' + err.message;
-    el.classList.remove('hidden');
+    thinkingEl.remove();
+    errorEl.textContent = 'Error: ' + err.message;
+    errorEl.classList.remove('hidden');
   } finally {
-    document.getElementById('search-spinner').classList.add('hidden');
-    document.getElementById('btn-search').disabled = false;
+    btnSearch.disabled = false;
+    document.getElementById('search-query').focus();
   }
 });
 
-function renderAnswer({ answer, citations }) {
+function appendUserBubble(text) {
+  const thread = document.getElementById('chat-thread');
+  const turn = document.createElement('div');
+  turn.className = 'chat-turn';
+  const bubble = document.createElement('div');
+  bubble.className = 'chat-bubble-user';
+  bubble.textContent = text;
+  turn.appendChild(bubble);
+  thread.appendChild(turn);
+  scrollChatToBottom();
+}
+
+function appendThinking() {
+  const thread = document.getElementById('chat-thread');
+  const el = document.createElement('div');
+  el.className = 'chat-thinking';
+  el.textContent = 'Thinking...';
+  thread.appendChild(el);
+  scrollChatToBottom();
+  return el;
+}
+
+function appendAIBubble({ answer, citations, rewriterFallback }) {
+  const tid = ++turnCounter;
+  const thread = document.getElementById('chat-thread');
+  const turn = document.createElement('div');
+  turn.className = 'chat-turn';
+
+  if (rewriterFallback) {
+    const notice = document.createElement('div');
+    notice.className = 'rewriter-fallback-notice';
+    notice.textContent = '⚠ Query rewriter unavailable — used original input for search';
+    turn.appendChild(notice);
+  }
+
+  const bubble = document.createElement('div');
+  bubble.className = 'chat-bubble-ai';
+  bubble.innerHTML = renderMarkdownWithCitations(answer, citations, tid);
+  turn.appendChild(bubble);
+
+  if (citations.length > 0) {
+    const details = document.createElement('details');
+    details.className = 'chat-citations';
+    const summary = document.createElement('summary');
+    summary.textContent = `References (${citations.length})`;
+    details.appendChild(summary);
+
+    const inner = document.createElement('div');
+    inner.className = 'chat-citations-inner';
+    inner.innerHTML = citations.map((c) => `
+      <div class="citation-item" id="cite-${tid}-${c.n}">
+        <div class="citation-header">
+          <span class="citation-n">[${c.n}]</span>
+          <span class="citation-path">${esc(c.path)}</span>
+          <span class="citation-score">score: ${c.score}</span>
+          <button class="btn-open btn-link" data-path="${esc(c.path)}">Open</button>
+        </div>
+        <div class="citation-snippet">"${esc(c.snippet)}"</div>
+      </div>
+    `).join('');
+
+    inner.querySelectorAll('.btn-open').forEach((btn) => {
+      btn.addEventListener('click', () => openFile(btn.dataset.path));
+    });
+
+    details.appendChild(inner);
+    turn.appendChild(details);
+  }
+
+  thread.appendChild(turn);
+  scrollChatToBottom();
+}
+
+function renderMarkdownWithCitations(answer, citations, tid) {
   const normalized = answer.replace(/【(\d+)】/g, '[$1]');
 
   const PLACEHOLDER = '\x00CITE$1\x00';
@@ -302,38 +415,16 @@ function renderAnswer({ answer, citations }) {
   html = html.replace(/\x00CITE(\d+)\x00/g, (_, n) => {
     const c = citations.find((x) => x.n === Number(n));
     if (!c) return `[${n}]`;
-    return `<a class="cite-link" href="#cite-${n}" title="${esc(c.path)}">[${n}]</a>`;
+    return `<a class="cite-link" href="#cite-${tid}-${n}" title="${esc(c.path)}">[${n}]</a>`;
   });
 
-  document.getElementById('answer-text').innerHTML = html;
-
-  const citSection = document.getElementById('citations-section');
-  const citList    = document.getElementById('citation-list');
-
-  if (citations.length > 0) {
-    citList.innerHTML = citations.map((c) => `
-      <div class="citation-item" id="cite-${c.n}">
-        <div class="citation-header">
-          <span class="citation-n">[${c.n}]</span>
-          <span class="citation-path">${esc(c.path)}</span>
-          <span class="citation-score">score: ${c.score}</span>
-          <button class="btn-open btn-link" data-path="${esc(c.path)}">Open</button>
-        </div>
-        <div class="citation-snippet">"${esc(c.snippet)}"</div>
-      </div>
-    `).join('');
-    citSection.classList.remove('hidden');
-  } else {
-    citSection.classList.add('hidden');
-  }
-
-  document.getElementById('answer-section').classList.remove('hidden');
+  return html;
 }
 
-document.getElementById('citation-list').addEventListener('click', (e) => {
-  const btn = e.target.closest('[data-path]');
-  if (btn) openFile(btn.dataset.path);
-});
+function scrollChatToBottom() {
+  const thread = document.getElementById('chat-thread');
+  thread.scrollTop = thread.scrollHeight;
+}
 
 async function openFile(path) {
   try {
@@ -353,7 +444,22 @@ function esc(str) {
     .replace(/"/g, '&quot;');
 }
 
-// ---------- Settings ----------
+// ---------- Settings modal ----------
+
+function openSettingsModal() {
+  document.getElementById('settings-modal').classList.remove('hidden');
+}
+
+function closeSettingsModal() {
+  document.getElementById('settings-modal').classList.add('hidden');
+  document.getElementById('settings-status').classList.add('hidden');
+}
+
+document.getElementById('btn-settings').addEventListener('click', openSettingsModal);
+document.getElementById('btn-settings-close').addEventListener('click', closeSettingsModal);
+document.getElementById('settings-modal').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) closeSettingsModal();
+});
 
 async function loadSettings() {
   try {

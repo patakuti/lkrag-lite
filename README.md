@@ -6,7 +6,7 @@ Lightweight, easy-to-deploy RAG (Retrieval-Augmented Generation) system for loca
 
 - **Workspace management**: named workspaces pointing to local directories, one active at a time
 - **Incremental indexing**: re-indexes only changed files (mtime + size + SHA-256 hash)
-- **Supported file types**: Markdown, plain text, PDF, Word (.docx), Excel (.xlsx), HTML
+- **Supported file types**: Markdown, plain text, PDF, Word (.docx), Excel (.xlsx), PowerPoint (.pptx), HTML
 - **Vector search**: SQLite + sqlite-vec (no external DB server required)
 - **Cited answers**: LLM answers with inline `[n]` citation numbers linked to source files
 - **File open**: click a citation to open the original file with the OS-associated application
@@ -40,7 +40,7 @@ Open http://localhost:3456 in your browser.
 | Variable | Default | Description |
 |---|---|---|
 | `DATABASE_PATH` | `./data/lkrag.db` | SQLite database file path |
-| `RAG_INCLUDE_PATTERNS` | `**/*.md,...` | Glob patterns for files to index (comma-separated) |
+| `RAG_INCLUDE_PATTERNS` | `**/*.md,...` | Glob patterns for files to index (comma-separated). To index PowerPoint files, add `**/*.pptx`. |
 | `RAG_EXCLUDE_PATTERNS` | `node_modules/**,.git/**` | Glob patterns to exclude |
 | `EMBEDDING_PROVIDER` | `openai` | `openai` / `litellm` / `ollama` |
 | `EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model name |

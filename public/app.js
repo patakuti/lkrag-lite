@@ -280,9 +280,11 @@ function clearIndexError() {
 
 /** Each entry: { role: 'user'|'assistant', content: string } */
 let chatHistory = [];
+let turnCounter = 0;
 
 function clearChat() {
   chatHistory = [];
+  turnCounter = 0;
   document.getElementById('chat-thread').innerHTML = '';
 }
 
@@ -350,6 +352,7 @@ function appendThinking() {
 }
 
 function appendAIBubble({ answer, citations, rewriterFallback }) {
+  const tid = ++turnCounter;
   const thread = document.getElementById('chat-thread');
   const turn = document.createElement('div');
   turn.className = 'chat-turn';
@@ -363,7 +366,7 @@ function appendAIBubble({ answer, citations, rewriterFallback }) {
 
   const bubble = document.createElement('div');
   bubble.className = 'chat-bubble-ai';
-  bubble.innerHTML = renderMarkdownWithCitations(answer, citations);
+  bubble.innerHTML = renderMarkdownWithCitations(answer, citations, tid);
   turn.appendChild(bubble);
 
   if (citations.length > 0) {
@@ -376,7 +379,7 @@ function appendAIBubble({ answer, citations, rewriterFallback }) {
     const inner = document.createElement('div');
     inner.className = 'chat-citations-inner';
     inner.innerHTML = citations.map((c) => `
-      <div class="citation-item" id="cite-${c.n}">
+      <div class="citation-item" id="cite-${tid}-${c.n}">
         <div class="citation-header">
           <span class="citation-n">[${c.n}]</span>
           <span class="citation-path">${esc(c.path)}</span>
@@ -399,7 +402,7 @@ function appendAIBubble({ answer, citations, rewriterFallback }) {
   scrollChatToBottom();
 }
 
-function renderMarkdownWithCitations(answer, citations) {
+function renderMarkdownWithCitations(answer, citations, tid) {
   const normalized = answer.replace(/【(\d+)】/g, '[$1]');
 
   const PLACEHOLDER = '\x00CITE$1\x00';
@@ -412,7 +415,7 @@ function renderMarkdownWithCitations(answer, citations) {
   html = html.replace(/\x00CITE(\d+)\x00/g, (_, n) => {
     const c = citations.find((x) => x.n === Number(n));
     if (!c) return `[${n}]`;
-    return `<a class="cite-link" href="#cite-${n}" title="${esc(c.path)}">[${n}]</a>`;
+    return `<a class="cite-link" href="#cite-${tid}-${n}" title="${esc(c.path)}">[${n}]</a>`;
   });
 
   return html;
@@ -441,7 +444,22 @@ function esc(str) {
     .replace(/"/g, '&quot;');
 }
 
-// ---------- Settings ----------
+// ---------- Settings modal ----------
+
+function openSettingsModal() {
+  document.getElementById('settings-modal').classList.remove('hidden');
+}
+
+function closeSettingsModal() {
+  document.getElementById('settings-modal').classList.add('hidden');
+  document.getElementById('settings-status').classList.add('hidden');
+}
+
+document.getElementById('btn-settings').addEventListener('click', openSettingsModal);
+document.getElementById('btn-settings-close').addEventListener('click', closeSettingsModal);
+document.getElementById('settings-modal').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) closeSettingsModal();
+});
 
 async function loadSettings() {
   try {

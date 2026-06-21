@@ -8,75 +8,73 @@
 </head>
 <body>
   <div id="app">
+    <!-- Header -->
     <header>
       <h1>lkrag-lite</h1>
-      <button id="btn-shutdown">Shutdown</button>
+      <div class="header-actions">
+        <button id="btn-settings">⚙ Settings</button>
+        <button id="btn-shutdown">Shutdown</button>
+      </div>
     </header>
 
-    <div id="layout">
-      <!-- Left sidebar -->
-      <aside id="sidebar">
-        <!-- Workspace panel -->
-        <section id="workspace-section">
-          <h2>Workspace</h2>
-          <div class="workspace-row">
-            <select id="ws-select"></select>
-            <button id="btn-add-ws">+ Add...</button>
-            <button id="btn-delete-ws" class="danger">Delete</button>
-          </div>
-          <p id="ws-empty" class="muted hidden">No workspaces. Click "+ Add..." to get started.</p>
-        </section>
+    <!-- Top pane: Workspace + Index -->
+    <div id="top-pane">
+      <div id="workspace-row">
+        <span class="pane-label">Workspace</span>
+        <select id="ws-select"></select>
+        <button id="btn-add-ws">+ Add...</button>
+        <button id="btn-delete-ws" class="danger">Delete</button>
+        <p id="ws-empty" class="muted hidden">No workspaces. Click "+ Add..." to get started.</p>
+      </div>
+      <div id="index-row">
+        <span class="pane-label">Index</span>
+        <span id="index-stats" class="index-stats"></span>
+        <button id="btn-update">Update</button>
+        <button id="btn-rebuild">Full Rebuild</button>
+        <button id="btn-cancel" disabled>Cancel</button>
+        <p id="index-error" class="error hidden"></p>
+      </div>
+    </div>
 
-        <!-- Index panel -->
-        <section id="index-section">
-          <h2>Index</h2>
-          <p id="index-stats" class="index-stats"></p>
-          <div id="index-controls">
-            <button id="btn-update">Update</button>
-            <button id="btn-rebuild">Full Rebuild</button>
-            <button id="btn-cancel" disabled>Cancel</button>
-          </div>
-          <p id="index-error" class="error hidden"></p>
-        </section>
+    <!-- Chat area -->
+    <div id="chat-main">
+      <div id="chat-header">
+        <span id="chat-title" class="muted">Select a workspace to start chatting</span>
+        <button id="btn-new-chat">New Chat</button>
+      </div>
 
-        <!-- Settings panel -->
-        <section id="settings-section">
-          <h2>Settings</h2>
-          <div class="settings-grid">
-            <label for="cfg-top-k">Top K</label>
-            <input id="cfg-top-k" type="number" min="1" max="50" step="1" />
+      <div id="chat-thread"></div>
 
-            <label for="cfg-min-sim">Min Similarity</label>
-            <input id="cfg-min-sim" type="number" min="0" max="1" step="0.01" />
+      <div id="chat-input-area">
+        <p id="search-error" class="error hidden"></p>
+        <form id="search-form">
+          <textarea id="search-query" rows="3" placeholder="Ask a question..." required></textarea>
+          <button type="submit" id="btn-search">Send</button>
+        </form>
+      </div>
+    </div>
 
-            <label for="cfg-output-instructions">Output Instructions</label>
-            <textarea id="cfg-output-instructions" rows="2" placeholder="e.g. Answer in Japanese."></textarea>
-          </div>
-          <div class="settings-actions">
-            <button id="btn-save-settings" class="primary">Apply</button>
-            <button id="btn-reload-env">Reload .env</button>
-          </div>
-          <p id="settings-status" class="muted hidden"></p>
-        </section>
-      </aside>
+    <!-- Settings modal -->
+    <div id="settings-modal" class="modal-overlay hidden">
+      <div class="modal-box">
+        <h2>Settings</h2>
+        <div class="settings-grid">
+          <label for="cfg-top-k">Top K</label>
+          <input id="cfg-top-k" type="number" min="1" max="50" step="1" />
 
-      <!-- Right main: chat -->
-      <main id="chat-main">
-        <div id="chat-header">
-          <span id="chat-title" class="muted">Select a workspace to start chatting</span>
-          <button id="btn-new-chat">New Chat</button>
+          <label for="cfg-min-sim">Min Similarity</label>
+          <input id="cfg-min-sim" type="number" min="0" max="1" step="0.01" />
+
+          <label for="cfg-output-instructions">Output Instructions</label>
+          <textarea id="cfg-output-instructions" rows="5" placeholder="e.g. Answer in Japanese."></textarea>
         </div>
-
-        <div id="chat-thread"></div>
-
-        <div id="chat-input-area">
-          <p id="search-error" class="error hidden"></p>
-          <form id="search-form">
-            <textarea id="search-query" rows="3" placeholder="Ask a question..." required></textarea>
-            <button type="submit" id="btn-search">Send</button>
-          </form>
+        <p id="settings-status" class="muted hidden"></p>
+        <div class="modal-actions">
+          <button id="btn-reload-env">Reload .env</button>
+          <button id="btn-settings-close">Cancel</button>
+          <button id="btn-save-settings" class="primary">Apply</button>
         </div>
-      </main>
+      </div>
     </div>
 
     <!-- Directory picker modal -->

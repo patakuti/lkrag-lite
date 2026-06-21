@@ -276,6 +276,119 @@ function clearIndexError() {
   document.getElementById('index-error').classList.add('hidden');
 }
 
+// ---------- Chat History ----------
+
+let currentSessionId = null;
+let chatSessions = [];
+
+async function loadChatHistory() {
+  try {
+    chatSessions = await api('GET', '/chats');
+    renderChatHistory();
+  } catch (_) { /* ignore */ }
+}
+
+function renderChatHistory() {
+  const list = document.getElementById('chat-history-list');
+  if (chatSessions.length === 0) {
+    list.innerHTML = '';
+    return;
+  }
+  list.innerHTML = chatSessions.map((s) => {
+    const isActive = s.id === currentSessionId;
+    const wsLabel = s.workspace_name
+      ? `<span class="history-item-ws">${esc(s.workspace_name)}</span>`
+      : `<span class="history-item-ws deleted">deleted</span>`;
+    const date = formatHistoryDate(s.updated_at);
+    return `
+      <div class="history-item${isActive ? ' active' : ''}" data-id="${esc(s.id)}">
+        <span class="history-item-title" title="${esc(s.title)}">${esc(s.title)}</span>
+        ${wsLabel}
+        <span class="history-item-date">${date}</span>
+        <button class="btn-delete-chat" data-id="${esc(s.id)}" title="Delete">×</button>
+      </div>
+    `;
+  }).join('');
+
+  list.querySelectorAll('.history-item').forEach((el) => {
+    el.addEventListener('click', (e) => {
+      if (e.target.classList.contains('btn-delete-chat')) return;
+      resumeChat(el.dataset.id);
+    });
+  });
+
+  list.querySelectorAll('.btn-delete-chat').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteSingleChat(btn.dataset.id);
+    });
+  });
+}
+
+function formatHistoryDate(unixMs) {
+  const d = new Date(unixMs);
+  const now = new Date();
+  const isToday = d.toDateString() === now.toDateString();
+  if (isToday) return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+async function resumeChat(sessionId) {
+  try {
+    const { session, messages } = await api('GET', `/chats/${sessionId}`);
+    currentSessionId = sessionId;
+
+    // Switch workspace if needed
+    if (session.workspace_id != null) {
+      const active = workspaces.find((w) => w.is_active);
+      if (!active || active.id !== session.workspace_id) {
+        await api('PUT', `/workspaces/${session.workspace_id}/activate`);
+        workspaces = await api('GET', '/workspaces');
+        renderWorkspaceDropdown();
+        await loadIndexStats();
+      }
+    }
+
+    // Rebuild chat thread from stored messages
+    chatHistory = [];
+    turnCounter = 0;
+    document.getElementById('chat-thread').innerHTML = '';
+
+    for (const msg of messages) {
+      if (msg.role === 'user') {
+        appendUserBubble(msg.content);
+        chatHistory.push({ role: 'user', content: msg.content });
+      } else if (msg.role === 'assistant') {
+        const citations = msg.citations ? JSON.parse(msg.citations) : [];
+        appendAIBubble({ answer: msg.content, citations, rewriterFallback: false });
+        chatHistory.push({ role: 'assistant', content: msg.content });
+      }
+    }
+
+    updateChatTitle();
+    renderChatHistory();
+  } catch (err) {
+    alert('Failed to load chat: ' + err.message);
+  }
+}
+
+async function deleteSingleChat(sessionId) {
+  await api('DELETE', `/chats/${sessionId}`);
+  if (currentSessionId === sessionId) {
+    currentSessionId = null;
+    clearChat();
+  }
+  await loadChatHistory();
+}
+
+document.getElementById('btn-delete-all-chats').addEventListener('click', async () => {
+  if (!confirm('Delete all chat history?')) return;
+  await api('DELETE', '/chats');
+  currentSessionId = null;
+  clearChat();
+  await loadChatHistory();
+});
+
 // ---------- Chat ----------
 
 /** Each entry: { role: 'user'|'assistant', content: string } */
@@ -285,7 +398,9 @@ let turnCounter = 0;
 function clearChat() {
   chatHistory = [];
   turnCounter = 0;
+  currentSessionId = null;
   document.getElementById('chat-thread').innerHTML = '';
+  renderChatHistory();
 }
 
 document.getElementById('btn-new-chat').addEventListener('click', () => {
@@ -309,9 +424,20 @@ document.getElementById('search-form').addEventListener('submit', async (e) => {
   const thinkingEl = appendThinking();
 
   try {
+    // Create session on first message
+    if (!currentSessionId) {
+      const active = workspaces.find((w) => w.is_active);
+      const session = await api('POST', '/chats', {
+        workspace_id: active ? active.id : null,
+        title: query.length > 60 ? query.slice(0, 60) + '…' : query,
+      });
+      currentSessionId = session.id;
+    }
+
     const result = await api('POST', '/search', {
       query,
       history: chatHistory,
+      session_id: currentSessionId,
     });
 
     thinkingEl.remove();
@@ -319,6 +445,8 @@ document.getElementById('search-form').addEventListener('submit', async (e) => {
 
     chatHistory.push({ role: 'user', content: query });
     chatHistory.push({ role: 'assistant', content: result.answer });
+
+    await loadChatHistory();
   } catch (err) {
     thinkingEl.remove();
     errorEl.textContent = 'Error: ' + err.message;
@@ -518,4 +646,5 @@ document.getElementById('btn-shutdown').addEventListener('click', async () => {
 
 loadWorkspaces();
 loadSettings();
+loadChatHistory();
 pollStatus();

@@ -63,6 +63,27 @@ function createSchema(db: Database.Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_chunks_file      ON chunks(file_id);
     CREATE INDEX IF NOT EXISTS idx_chunks_workspace ON chunks(workspace_id);
+
+    CREATE TABLE IF NOT EXISTS chat_sessions (
+      id           TEXT    PRIMARY KEY,
+      workspace_id INTEGER,
+      title        TEXT    NOT NULL,
+      created_at   INTEGER NOT NULL,
+      updated_at   INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_sessions_updated ON chat_sessions(updated_at DESC);
+
+    CREATE TABLE IF NOT EXISTS chat_messages (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id TEXT    NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+      role       TEXT    NOT NULL,
+      content    TEXT    NOT NULL,
+      citations  TEXT,
+      created_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_messages_session ON chat_messages(session_id);
   `);
 }
 
@@ -302,6 +323,86 @@ export function getLastIndexedAt(workspaceId: number): string | null {
     .get(workspaceId) as { last: string | null };
   return row.last;
 }
+
+// ---------- chat sessions ----------
+
+export interface ChatSession {
+  id: string;
+  workspace_id: number | null;
+  title: string;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface ChatSessionWithWorkspace extends ChatSession {
+  workspace_name: string | null;
+}
+
+export interface ChatMessage {
+  id: number;
+  session_id: string;
+  role: string;
+  content: string;
+  citations: string | null;
+  created_at: number;
+}
+
+export function listChatSessions(): ChatSessionWithWorkspace[] {
+  return getDb().prepare(`
+    SELECT s.*, w.name AS workspace_name
+    FROM chat_sessions s
+    LEFT JOIN workspaces w ON w.id = s.workspace_id
+    ORDER BY s.updated_at DESC
+  `).all() as ChatSessionWithWorkspace[];
+}
+
+export function createChatSession(id: string, workspaceId: number | null, title: string): ChatSession {
+  const now = Date.now();
+  getDb().prepare(
+    'INSERT INTO chat_sessions (id, workspace_id, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
+  ).run(id, workspaceId, title, now, now);
+  return { id, workspace_id: workspaceId, title, created_at: now, updated_at: now };
+}
+
+export function getChatSession(id: string): ChatSessionWithWorkspace | null {
+  const row = getDb().prepare(`
+    SELECT s.*, w.name AS workspace_name
+    FROM chat_sessions s
+    LEFT JOIN workspaces w ON w.id = s.workspace_id
+    WHERE s.id = ?
+  `).get(id) as ChatSessionWithWorkspace | undefined;
+  return row ?? null;
+}
+
+export function getChatMessages(sessionId: string): ChatMessage[] {
+  return getDb().prepare(
+    'SELECT * FROM chat_messages WHERE session_id = ? ORDER BY created_at'
+  ).all(sessionId) as ChatMessage[];
+}
+
+export function appendChatMessage(
+  sessionId: string,
+  role: string,
+  content: string,
+  citations: string | null
+): void {
+  const now = Date.now();
+  const db = getDb();
+  db.prepare(
+    'INSERT INTO chat_messages (session_id, role, content, citations, created_at) VALUES (?, ?, ?, ?, ?)'
+  ).run(sessionId, role, content, citations, now);
+  db.prepare('UPDATE chat_sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
+}
+
+export function deleteChatSession(id: string): void {
+  getDb().prepare('DELETE FROM chat_sessions WHERE id = ?').run(id);
+}
+
+export function deleteAllChatSessions(): void {
+  getDb().prepare('DELETE FROM chat_sessions').run();
+}
+
+// ---------- workspace-level clear ----------
 
 export function clearWorkspaceIndex(workspaceId: number): void {
   const db = getDb();

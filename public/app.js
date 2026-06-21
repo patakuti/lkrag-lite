@@ -166,10 +166,13 @@ document.getElementById('search-form').addEventListener('submit', async (e) => {
 });
 
 function renderAnswer({ answer, citations }) {
+  // Normalize 【N】→[N] so citation linking works regardless of bracket style
+  const normalized = answer.replace(/【(\d+)】/g, '[$1]');
+
   // Insert cite anchors as placeholder tokens before Markdown rendering,
   // then restore them after, so marked doesn't escape the HTML.
   const PLACEHOLDER = '\x00CITE$1\x00';
-  const withPlaceholders = answer.replace(/\[(\d+)\]/g, PLACEHOLDER);
+  const withPlaceholders = normalized.replace(/\[(\d+)\]/g, PLACEHOLDER);
 
   // Render Markdown → HTML
   let html = typeof marked !== 'undefined'

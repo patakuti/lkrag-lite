@@ -1,7 +1,8 @@
 import { checkEmbeddingDim } from '../db/sqlite.js';
 
-/** Embed texts via OpenAI-compatible /embeddings endpoint. Implemented in Phase 2. */
-export async function embed(texts: string[]): Promise<number[][]> {
+export type EmbeddingPurpose = 'query' | 'document';
+
+export async function embed(texts: string[], purpose?: EmbeddingPurpose): Promise<number[][]> {
   const provider = process.env.EMBEDDING_PROVIDER ?? 'openai';
   const model    = process.env.EMBEDDING_MODEL    ?? 'text-embedding-3-small';
   const apiKey   = process.env.OPENAI_API_KEY     ?? '';
@@ -15,13 +16,18 @@ export async function embed(texts: string[]): Promise<number[][]> {
     baseUrl = 'https://api.openai.com/v1';
   }
 
+  const prefix = purpose === 'query'    ? (process.env.EMBEDDING_QUERY_PREFIX    ?? '')
+               : purpose === 'document' ? (process.env.EMBEDDING_DOCUMENT_PREFIX ?? '')
+               : '';
+  const input = prefix ? texts.map((t) => prefix + t) : texts;
+
   const res = await fetch(`${baseUrl}/embeddings`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({ model, input: texts }),
+    body: JSON.stringify({ model, input }),
   });
 
   if (!res.ok) {

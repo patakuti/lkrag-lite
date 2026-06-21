@@ -48,6 +48,26 @@ h3 { font-size: 13px; margin: 12px 0 8px; color: #555; }
 .index-stats { font-size: 13px; color: #555; margin-bottom: 10px; min-height: 1.4em; }
 #index-controls { display: flex; gap: 8px; }
 
+/* Settings */
+.settings-grid {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 8px 12px;
+  align-items: start;
+  margin-bottom: 12px;
+}
+.settings-grid label { font-size: 13px; color: #555; padding-top: 7px; }
+.settings-grid input[type="number"] {
+  width: 100px; padding: 6px 8px;
+  border: 1px solid #ccc; border-radius: 4px; font-size: 13px;
+}
+.settings-grid textarea {
+  resize: vertical; padding: 6px 8px;
+  border: 1px solid #ccc; border-radius: 4px; font-size: 13px;
+  font-family: inherit;
+}
+.settings-actions { display: flex; gap: 8px; }
+
 /* Search */
 #search-form { display: flex; flex-direction: column; gap: 8px; }
 #search-query { resize: vertical; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }

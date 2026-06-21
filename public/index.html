@@ -58,6 +58,26 @@
         <p id="index-error" class="error hidden"></p>
       </section>
 
+      <!-- Settings panel -->
+      <section id="settings-section">
+        <h2>Settings</h2>
+        <div class="settings-grid">
+          <label for="cfg-top-k">Top K</label>
+          <input id="cfg-top-k" type="number" min="1" max="50" step="1" />
+
+          <label for="cfg-min-sim">Min Similarity</label>
+          <input id="cfg-min-sim" type="number" min="0" max="1" step="0.01" />
+
+          <label for="cfg-output-instructions">Output Instructions</label>
+          <textarea id="cfg-output-instructions" rows="2" placeholder="e.g. Answer in Japanese."></textarea>
+        </div>
+        <div class="settings-actions">
+          <button id="btn-save-settings" class="primary">Apply</button>
+          <button id="btn-reload-env">Reload .env</button>
+        </div>
+        <p id="settings-status" class="muted hidden"></p>
+      </section>
+
       <!-- Search panel -->
       <section id="search-section">
         <h2>Search</h2>

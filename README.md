@@ -2,6 +2,25 @@
 
 Lightweight, easy-to-deploy RAG (Retrieval-Augmented Generation) system for local files.
 
+## Why lkrag-lite?
+
+Most RAG tools treat your documents as data to be *imported* into a proprietary store: you upload files, the system ingests them, and if you edit the originals you must manually re-sync. lkrag-lite takes the opposite approach — **your local directory is the knowledge base**. There is no import step; the index is always a reflection of your file system.
+
+| Feature | lkrag-lite | Dify | RAGFlow | AnythingLLM | PrivateGPT |
+|---|:---:|:---:|:---:|:---:|:---:|
+| **Search local files directly** (no upload required) | ○ | × | × | △ ¹ | × |
+| **Easy to reflect file changes** (incremental re-index) | ○ | × | × | △ ¹ | × |
+| **Citations open source files via OS** | ○ | × | × | × | × |
+| **Embedded vector DB** (no separate DB server) | ○ | × | × | ○ | △ ² |
+| **Query rewriter** (auto-rewrites follow-up questions for RAG) | ○ | △ ³ | △ ³ | × | × |
+| **Chat history** (persistent, resumable across workspaces) | ○ | ○ | ○ | ○ | × |
+| **Simple setup** (`npm install && npm start`) | ○ | × | × | △ ⁴ | △ |
+
+¹ AnythingLLM: file-level watching only (beta); directory-wide indexing is not supported  
+² PrivateGPT: only when using Qdrant in local embedded mode  
+³ Dify / RAGFlow: achievable via workflow configuration, but not automatic out of the box  
+⁴ AnythingLLM: desktop app available, but initial configuration involves multiple steps  
+
 ## Features
 
 - **Workspace management**: named workspaces pointing to local directories, one active at a time

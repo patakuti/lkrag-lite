@@ -7,6 +7,7 @@ import * as pdfParser  from './parsers/pdf.js';
 import * as docxParser from './parsers/docx.js';
 import * as xlsxParser from './parsers/xlsx.js';
 import * as htmlParser from './parsers/html.js';
+import * as pptxParser from './parsers/pptx.js';
 import { chunk, makeSnippet } from './chunker.js';
 import {
   getFile, upsertFile, listFileIds, deleteFile,
@@ -54,7 +55,7 @@ interface Parser {
   parse(filePath: string): Promise<string>;
 }
 
-const parsers: Parser[] = [textParser, pdfParser, docxParser, xlsxParser, htmlParser];
+const parsers: Parser[] = [textParser, pdfParser, docxParser, xlsxParser, htmlParser, pptxParser];
 
 function getParser(filePath: string): Parser | null {
   const ext = path.extname(filePath).toLowerCase();

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -10,69 +10,71 @@
   <div id="app">
     <header>
       <h1>lkrag-lite</h1>
+      <button id="btn-shutdown">Shutdown</button>
     </header>
 
     <main>
       <!-- Workspace panel -->
       <section id="workspace-section">
-        <h2>ワークスペース</h2>
-        <div id="workspace-list"></div>
-        <button id="btn-add-ws">+ ワークスペースを追加...</button>
+        <h2>Workspace</h2>
+        <div class="workspace-row">
+          <select id="ws-select"></select>
+          <button id="btn-add-ws">+ Add...</button>
+          <button id="btn-delete-ws" class="danger">Delete</button>
+        </div>
+        <p id="ws-empty" class="muted hidden">No workspaces. Click "+ Add..." to get started.</p>
       </section>
 
       <!-- Directory picker modal -->
       <div id="dir-modal" class="modal-overlay hidden">
         <div class="modal-box">
-          <h2>ディレクトリを選択</h2>
+          <h2>Add Workspace</h2>
           <div class="modal-path-row">
             <input id="modal-path-input" type="text" placeholder="/home/..." />
-            <button id="modal-go-btn">移動</button>
+            <button id="modal-go-btn">Go</button>
           </div>
           <div id="modal-dir-list"></div>
           <div class="modal-name-row">
-            <label>名前</label>
-            <input id="modal-name-input" type="text" placeholder="ワークスペース名" />
+            <label>Name</label>
+            <input id="modal-name-input" type="text" placeholder="Workspace name" />
           </div>
           <p id="modal-error" class="error hidden"></p>
           <div class="modal-actions">
-            <button id="modal-cancel-btn">キャンセル</button>
-            <button id="modal-add-btn" class="primary">追加</button>
+            <button id="modal-cancel-btn">Cancel</button>
+            <button id="modal-add-btn" class="primary">Add</button>
           </div>
         </div>
       </div>
 
       <!-- Index panel -->
       <section id="index-section">
-        <h2>インデックス</h2>
+        <h2>Index</h2>
+        <p id="index-stats" class="index-stats"></p>
         <div id="index-controls">
-          <button id="btn-update">増分更新</button>
-          <button id="btn-rebuild">フルリビルド</button>
-          <button id="btn-cancel" disabled>中断</button>
-        </div>
-        <div id="index-progress" class="hidden">
-          <div id="progress-bar-wrap"><div id="progress-bar"></div></div>
-          <p id="progress-text"></p>
+          <button id="btn-update">Update</button>
+          <button id="btn-rebuild">Full Rebuild</button>
+          <button id="btn-cancel" disabled>Cancel</button>
         </div>
         <p id="index-error" class="error hidden"></p>
       </section>
 
       <!-- Search panel -->
       <section id="search-section">
-        <h2>検索</h2>
+        <h2>Search</h2>
         <form id="search-form">
-          <textarea id="search-query" rows="3" placeholder="質問を入力してください" required></textarea>
-          <button type="submit" id="btn-search">検索</button>
+          <textarea id="search-query" rows="3" placeholder="Enter your question..." required></textarea>
+          <button type="submit" id="btn-search">Search</button>
         </form>
-        <div id="search-spinner" class="hidden">処理中...</div>
+        <div id="search-spinner" class="hidden">Processing...</div>
         <p id="search-error" class="error hidden"></p>
       </section>
 
       <!-- Answer panel -->
       <section id="answer-section" class="hidden">
-        <h2>回答</h2>
+        <h2>Answer</h2>
         <div id="answer-text"></div>
         <div id="citations-section" class="hidden">
-          <h3>引用</h3>
+          <h3>References</h3>
           <div id="citation-list"></div>
         </div>
       </section>

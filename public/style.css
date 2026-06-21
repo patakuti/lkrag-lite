@@ -66,6 +66,11 @@ h3 { font-size: 13px; margin: 12px 0 8px; color: #555; }
 #answer-text code { background:#f0f0f0; border-radius:3px; padding:0 3px; font-size:0.9em; }
 #answer-text pre { background:#f0f0f0; border-radius:4px; padding:10px; overflow-x:auto; margin:0 0 0.8em; }
 #answer-text pre code { background:none; padding:0; }
+#answer-text table { border-collapse: collapse; margin: 0 0 0.8em; width: 100%; }
+#answer-text th, #answer-text td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+#answer-text th { background: #f0f0f0; font-weight: 600; }
+#answer-text tr:nth-child(even) td { background: #fafafa; }
+
 #answer-text a.cite-link {
   color: #1a73e8; text-decoration: none; font-size: 11px;
   vertical-align: super; font-weight: 600;

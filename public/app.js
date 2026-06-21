@@ -58,7 +58,13 @@ function renderWorkspaceDropdown() {
 function updateChatTitle() {
   const active = workspaces.find((ws) => ws.is_active);
   const el = document.getElementById('chat-title');
-  el.textContent = active ? active.name : 'Select a workspace to start chatting';
+  if (currentSessionDeleted) {
+    el.textContent = 'Workspace deleted — RAG unavailable (chat history only)';
+    el.classList.add('warn');
+  } else {
+    el.textContent = active ? active.name : 'Select a workspace to start chatting';
+    el.classList.remove('warn');
+  }
 }
 
 document.getElementById('ws-select').addEventListener('change', async (e) => {
@@ -279,6 +285,7 @@ function clearIndexError() {
 // ---------- Chat History ----------
 
 let currentSessionId = null;
+let currentSessionDeleted = false; // true when resumed session's workspace is deleted
 let chatSessions = [];
 
 async function loadChatHistory() {
@@ -339,7 +346,9 @@ async function resumeChat(sessionId) {
     currentSessionId = sessionId;
 
     // Switch workspace if needed (skip if workspace was deleted)
-    if (session.workspace_id != null && session.workspace_name != null) {
+    const wsDeleted = session.workspace_id != null && session.workspace_name == null;
+    currentSessionDeleted = wsDeleted;
+    if (!wsDeleted && session.workspace_id != null) {
       const active = workspaces.find((w) => w.is_active);
       if (!active || active.id !== session.workspace_id) {
         await api('PUT', `/workspaces/${session.workspace_id}/activate`);
@@ -399,7 +408,9 @@ function clearChat() {
   chatHistory = [];
   turnCounter = 0;
   currentSessionId = null;
+  currentSessionDeleted = false;
   document.getElementById('chat-thread').innerHTML = '';
+  updateChatTitle();
   renderChatHistory();
 }
 
@@ -437,6 +448,7 @@ document.getElementById('search-form').addEventListener('submit', async (e) => {
       query,
       history: chatHistory,
       session_id: currentSessionId,
+      skip_rag: currentSessionDeleted || undefined,
     });
 
     thinkingEl.remove();

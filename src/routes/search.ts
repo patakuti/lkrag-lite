@@ -7,10 +7,11 @@ const router = Router();
 
 router.post('/', (req, res) => {
   void (async () => {
-    const { query, history, session_id } = req.body as {
+    const { query, history, session_id, skip_rag } = req.body as {
       query?: string;
       history?: ConversationMessage[];
       session_id?: string;
+      skip_rag?: boolean;
     };
 
     if (!query || typeof query !== 'string' || !query.trim()) {
@@ -46,7 +47,7 @@ router.post('/', (req, res) => {
         safeHistory
       );
 
-      const chunks = await retrieve(searchQuery);
+      const chunks = skip_rag ? [] : await retrieve(searchQuery);
       const result = await generateAnswer(query.trim(), chunks, safeHistory);
 
       if (sessionId) {

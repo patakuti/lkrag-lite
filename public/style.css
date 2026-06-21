@@ -101,6 +101,7 @@ header h1 { font-size: 20px; }
   flex-shrink: 0;
 }
 #chat-title { font-size: 13px; color: #888; }
+#chat-title.warn { color: #b45309; }
 
 #chat-thread {
   flex: 1;

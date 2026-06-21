@@ -18,7 +18,7 @@ export async function retrieve(query: string): Promise<RetrievedChunk[]> {
   const topK     = Number(process.env.RAG_TOP_K)            || 5;
   const minScore = Number(process.env.RAG_MIN_SIMILARITY)   || 0.3;
 
-  const [queryVec] = await embed([query]);
+  const [queryVec] = await embed([query], 'query');
   const raw: SearchResult[] = searchChunks(ws.id, queryVec, topK);
 
   return raw

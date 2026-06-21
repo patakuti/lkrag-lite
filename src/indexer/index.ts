@@ -140,7 +140,7 @@ async function indexWorkspace(workspaceId: number, wsPath: string, rebuild: bool
       const fileId = upsertFile(workspaceId, relPath, mtime, size, hash);
 
       if (chunks.length > 0) {
-        const embeddings = await embed(chunks);
+        const embeddings = await embed(chunks, 'document');
         for (let i = 0; i < chunks.length; i++) {
           const snippet = makeSnippet(chunks[i]);
           const chunkId = insertChunk(fileId, workspaceId, i, chunks[i], snippet);

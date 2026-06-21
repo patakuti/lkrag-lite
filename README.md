@@ -12,6 +12,8 @@ Lightweight, easy-to-deploy RAG (Retrieval-Augmented Generation) system for loca
 - **File open**: click a citation to open the original file with the OS-associated application
 - **Flexible LLM/Embedding**: OpenAI / Anthropic / any OpenAI-compatible endpoint (LiteLLM, Ollama)
 - **Runtime settings UI**: adjust Top K, Min Similarity, and Output Instructions from the browser without restarting the server
+- **Multi-turn chat**: conversational UI that carries context across turns
+- **Query rewriter**: LLM automatically rewrites follow-up questions into clean, standalone RAG search queries
 
 ## Requirements
 
@@ -52,6 +54,8 @@ Open http://localhost:3456 in your browser.
 | `RAG_TOP_K` | `5` | Number of chunks to retrieve (overridable from UI) |
 | `RAG_MIN_SIMILARITY` | `0.3` | Minimum cosine similarity score 0–1 (overridable from UI) |
 | `RAG_OUTPUT_INSTRUCTIONS` | _(empty)_ | Extra instructions appended to the LLM system prompt, e.g. `"Answer in Japanese."` (overridable from UI) |
+| `QUERY_REWRITER_PROVIDER` | `openai` | `openai` / `openai-compatible` (Anthropic not supported) |
+| `QUERY_REWRITER_MODEL` | `gpt-4o-mini` | Model used by the query rewriter (reuses `OPENAI_API_KEY` / `OPENAI_COMPATIBLE_BASE_URL`) |
 | `PORT` | `3456` | HTTP server port |
 
 ## Usage
@@ -59,9 +63,10 @@ Open http://localhost:3456 in your browser.
 1. **Add a workspace**: click "+ Add..." and pick a directory
 2. **Activate**: select a workspace from the dropdown to make it active
 3. **Index**: click "Update" (incremental) or "Full Rebuild"
-4. **Search**: type a natural language question and click "Search"
-5. **Citations**: click `[n]` in the answer or "Open" in the citation list to open the source file
-6. **Settings**: adjust Top K, Min Similarity, and Output Instructions in the Settings panel; click "Reload .env" to reset to the values in `.env`
+4. **Chat**: type a question and click "Send"; follow-up questions carry conversation context automatically
+5. **Citations**: click `[n]` in the answer or "Open" in the References section to open the source file
+6. **New Chat**: click "New Chat" to clear the conversation history
+7. **Settings**: adjust Top K, Min Similarity, and Output Instructions in the Settings panel; click "Reload .env" to reset to the values in `.env`
 
 ## Changing the Embedding Model
 
@@ -80,8 +85,9 @@ npm run dev   # tsx watch mode (auto-reload on source change)
     ↕ HTTP
 [Express (Node.js / TypeScript)]
     ├── Indexer (fast-glob → parser → chunker → Embedding API → sqlite-vec)
-    ├── Retriever (query → Embedding API → KNN search)
-    ├── LLM (context + query → cited answer)
+    ├── Query Rewriter (conversation history + user input → clean RAG query)
+    ├── Retriever (RAG query → Embedding API → KNN search)
+    ├── LLM (conversation history + RAG context + user input → cited answer)
     └── SQLite + sqlite-vec (embedded vector DB)
 ```
 

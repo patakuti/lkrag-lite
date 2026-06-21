@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>lkrag-lite</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>lkrag-lite</h1>
+    </header>
+
+    <main>
+      <!-- Workspace panel -->
+      <section id="workspace-section">
+        <h2>ワークスペース</h2>
+        <div id="workspace-list"></div>
+        <form id="add-ws-form">
+          <input id="ws-name"  type="text" placeholder="名前" required />
+          <input id="ws-path"  type="text" placeholder="ディレクトリパス" required />
+          <button type="submit">+ 追加</button>
+        </form>
+      </section>
+
+      <!-- Index panel -->
+      <section id="index-section">
+        <h2>インデックス</h2>
+        <div id="index-controls">
+          <button id="btn-update">増分更新</button>
+          <button id="btn-rebuild">フルリビルド</button>
+          <button id="btn-cancel" disabled>中断</button>
+        </div>
+        <div id="index-progress" class="hidden">
+          <div id="progress-bar-wrap"><div id="progress-bar"></div></div>
+          <p id="progress-text"></p>
+        </div>
+        <p id="index-error" class="error hidden"></p>
+      </section>
+
+      <!-- Search panel -->
+      <section id="search-section">
+        <h2>検索</h2>
+        <form id="search-form">
+          <textarea id="search-query" rows="3" placeholder="質問を入力してください" required></textarea>
+          <button type="submit" id="btn-search">検索</button>
+        </form>
+        <div id="search-spinner" class="hidden">処理中...</div>
+        <p id="search-error" class="error hidden"></p>
+      </section>
+
+      <!-- Answer panel -->
+      <section id="answer-section" class="hidden">
+        <h2>回答</h2>
+        <div id="answer-text"></div>
+        <div id="citations-section" class="hidden">
+          <h3>引用</h3>
+          <div id="citation-list"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/marked.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

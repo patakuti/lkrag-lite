@@ -32,6 +32,10 @@ const SYSTEM_PROMPT =
   'Output your answer in Markdown format. ' +
   'If the sources do not contain enough information, say so clearly instead of guessing.';
 
+const SYSTEM_PROMPT_NO_RAG =
+  'You are a helpful assistant. Answer the user\'s question based on the conversation history. ' +
+  'Output your answer in Markdown format.';
+
 const REWRITER_SYSTEM_PROMPT =
   'You are a search query optimizer. Given a conversation history and the latest user message, ' +
   'generate a concise, standalone search query that captures the key information need for a vector database lookup. ' +
@@ -202,9 +206,10 @@ export async function rewriteQuery(
 export async function generateAnswer(
   query: string,
   chunks: RetrievedChunk[],
-  history: ConversationMessage[] = []
+  history: ConversationMessage[] = [],
+  skipRag = false
 ): Promise<Omit<LLMResult, 'rewriterFallback'>> {
-  if (chunks.length === 0) {
+  if (!skipRag && chunks.length === 0) {
     return {
       answer: 'No relevant documents found in the active workspace.',
       citations: [],
@@ -213,16 +218,27 @@ export async function generateAnswer(
 
   const provider = process.env.LLM_PROVIDER ?? 'openai';
   const model    = process.env.LLM_MODEL    ?? 'gpt-4o-mini';
-  const context  = buildContext(chunks);
 
   const extra = runtimeConfig.outputInstructions.trim();
-  const systemPrompt = extra ? `${SYSTEM_PROMPT}\n${extra}` : SYSTEM_PROMPT;
 
-  // Build messages: history turns + current user message with RAG context
-  const messages: { role: string; content: string }[] = [
-    ...history.map((m) => ({ role: m.role, content: m.content })),
-    { role: 'user', content: `Context:\n${context}\n\nQuestion: ${query}` },
-  ];
+  let systemPrompt: string;
+  let messages: { role: string; content: string }[];
+
+  if (skipRag) {
+    systemPrompt = extra ? `${SYSTEM_PROMPT_NO_RAG}\n${extra}` : SYSTEM_PROMPT_NO_RAG;
+    messages = [
+      ...history.map((m) => ({ role: m.role, content: m.content })),
+      { role: 'user', content: query },
+    ];
+  } else {
+    const context = buildContext(chunks);
+    systemPrompt = extra ? `${SYSTEM_PROMPT}\n${extra}` : SYSTEM_PROMPT;
+    // Build messages: history turns + current user message with RAG context
+    messages = [
+      ...history.map((m) => ({ role: m.role, content: m.content })),
+      { role: 'user', content: `Context:\n${context}\n\nQuestion: ${query}` },
+    ];
+  }
 
   let answer: string;
 

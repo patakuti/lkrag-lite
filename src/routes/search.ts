@@ -48,7 +48,7 @@ router.post('/', (req, res) => {
       );
 
       const chunks = skip_rag ? [] : await retrieve(searchQuery);
-      const result = await generateAnswer(query.trim(), chunks, safeHistory);
+      const result = await generateAnswer(query.trim(), chunks, safeHistory, skip_rag);
 
       if (sessionId) {
         appendChatMessage(sessionId, 'assistant', result.answer, JSON.stringify(result.citations));

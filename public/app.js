@@ -54,19 +54,98 @@ async function deleteWs(id) {
   await loadWorkspaces();
 }
 
-document.getElementById('add-ws-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const name = document.getElementById('ws-name').value.trim();
-  const path = document.getElementById('ws-path').value.trim();
-  try {
-    await api('POST', '/workspaces', { name, path });
-    document.getElementById('ws-name').value = '';
-    document.getElementById('ws-path').value = '';
-    await loadWorkspaces();
-  } catch (err) {
-    alert('追加失敗: ' + err.message);
+// ---------- Directory picker modal ----------
+
+document.getElementById('btn-add-ws').addEventListener('click', () => openDirModal());
+
+document.getElementById('modal-cancel-btn').addEventListener('click', closeDirModal);
+document.getElementById('dir-modal').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) closeDirModal();
+});
+
+document.getElementById('modal-go-btn').addEventListener('click', () => {
+  const p = document.getElementById('modal-path-input').value.trim();
+  if (p) navigateTo(p);
+});
+
+document.getElementById('modal-path-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    const p = document.getElementById('modal-path-input').value.trim();
+    if (p) navigateTo(p);
   }
 });
+
+document.getElementById('modal-add-btn').addEventListener('click', async () => {
+  const path = document.getElementById('modal-path-input').value.trim();
+  const name = document.getElementById('modal-name-input').value.trim();
+  if (!path || !name) {
+    showModalError('パスと名前を入力してください');
+    return;
+  }
+  try {
+    await api('POST', '/workspaces', { name, path });
+    closeDirModal();
+    await loadWorkspaces();
+  } catch (err) {
+    showModalError('追加失敗: ' + err.message);
+  }
+});
+
+function openDirModal() {
+  clearModalError();
+  document.getElementById('modal-name-input').value = '';
+  document.getElementById('dir-modal').classList.remove('hidden');
+  navigateTo('');
+}
+
+function closeDirModal() {
+  document.getElementById('dir-modal').classList.add('hidden');
+}
+
+async function navigateTo(dirPath) {
+  clearModalError();
+  try {
+    const data = await api('GET', '/browse' + (dirPath ? '?path=' + encodeURIComponent(dirPath) : ''));
+    renderDirList(data);
+    document.getElementById('modal-path-input').value = data.current;
+    // Auto-fill name from directory name only when navigating (not when user edited name manually)
+    const nameParts = data.current.split('/');
+    const dirName = nameParts[nameParts.length - 1] || nameParts[nameParts.length - 2] || '';
+    document.getElementById('modal-name-input').value = dirName;
+  } catch (err) {
+    showModalError(err.message);
+  }
+}
+
+function renderDirList({ parent, current, dirs }) {
+  const list = document.getElementById('modal-dir-list');
+  let html = '';
+  if (parent) {
+    html += `<div class="dir-entry parent" data-path="${esc(parent)}"><span class="dir-icon">📁</span>..</div>`;
+  }
+  if (dirs.length === 0 && !parent) {
+    html += '<div style="padding:10px;color:#888;font-size:13px">サブディレクトリがありません</div>';
+  }
+  html += dirs.map((d) => {
+    const full = current.replace(/\/$/, '') + '/' + d;
+    return `<div class="dir-entry" data-path="${esc(full)}"><span class="dir-icon">📁</span>${esc(d)}</div>`;
+  }).join('');
+  list.innerHTML = html;
+
+  list.querySelectorAll('.dir-entry').forEach((el) => {
+    el.addEventListener('click', () => navigateTo(el.dataset.path));
+  });
+}
+
+function showModalError(msg) {
+  const el = document.getElementById('modal-error');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+
+function clearModalError() {
+  document.getElementById('modal-error').classList.add('hidden');
+}
 
 // ---------- Index ----------
 

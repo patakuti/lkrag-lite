@@ -106,6 +106,36 @@ button.primary:hover:not(:disabled) { background: #1558b0; }
 }
 .btn-link:hover { text-decoration: underline; background: none; }
 
+/* Modal */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+  display: flex; align-items: center; justify-content: center; z-index: 100;
+}
+.modal-box {
+  background: #fff; border-radius: 8px; padding: 20px;
+  width: 480px; max-width: 95vw; display: flex; flex-direction: column; gap: 12px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.18);
+}
+.modal-box h2 { font-size: 15px; color: #444; border-bottom: 1px solid #eee; padding-bottom: 8px; margin-bottom: 0; }
+.modal-path-row { display: flex; gap: 6px; }
+.modal-path-row input { flex: 1; padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; font-family: monospace; }
+#modal-dir-list {
+  border: 1px solid #e0e0e0; border-radius: 4px; max-height: 240px; overflow-y: auto;
+  background: #fafafa;
+}
+.dir-entry {
+  display: flex; align-items: center; gap: 6px;
+  padding: 7px 10px; cursor: pointer; font-size: 13px; border-bottom: 1px solid #f0f0f0;
+}
+.dir-entry:last-child { border-bottom: none; }
+.dir-entry:hover { background: #e8f0fe; }
+.dir-entry .dir-icon { color: #f5a623; font-size: 14px; }
+.dir-entry.parent { color: #888; }
+.modal-name-row { display: flex; align-items: center; gap: 8px; }
+.modal-name-row label { font-size: 13px; white-space: nowrap; }
+.modal-name-row input { flex: 1; padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
 /* Util */
 .hidden { display: none !important; }
 .error { color: #c62828; font-size: 13px; margin-top: 6px; }

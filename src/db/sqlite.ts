@@ -284,6 +284,20 @@ export function searchChunks(workspaceId: number, queryVec: number[], topK: numb
 
 // ---------- workspace-level clear ----------
 
+export function getIndexedFileCount(workspaceId: number): number {
+  const row = getDb()
+    .prepare('SELECT COUNT(*) as cnt FROM files WHERE workspace_id = ?')
+    .get(workspaceId) as { cnt: number };
+  return row.cnt;
+}
+
+export function getLastIndexedAt(workspaceId: number): string | null {
+  const row = getDb()
+    .prepare('SELECT MAX(indexed_at) as last FROM files WHERE workspace_id = ?')
+    .get(workspaceId) as { last: string | null };
+  return row.last;
+}
+
 export function clearWorkspaceIndex(workspaceId: number): void {
   const db = getDb();
   const fileIds = (

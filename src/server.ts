@@ -34,6 +34,12 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString() });
 });
 
+// Shutdown
+app.post('/api/shutdown', (_req, res) => {
+  res.json({ shutdown: true });
+  setTimeout(() => process.exit(0), 100);
+});
+
 app.use('/api/workspaces', workspacesRouter);
 app.use('/api/index', indexRouter);
 app.use('/api/search', searchRouter);

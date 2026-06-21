@@ -1,10 +1,23 @@
 import { Router } from 'express';
 import { getStatus, runUpdate, runRebuild, requestCancel } from '../indexer/index.js';
+import { getActiveWorkspace, getIndexedFileCount, getLastIndexedAt } from '../db/sqlite.js';
 
 const router = Router();
 
 router.get('/status', (_req, res) => {
   res.json(getStatus());
+});
+
+router.get('/stats', (_req, res) => {
+  const ws = getActiveWorkspace();
+  if (!ws) {
+    res.json({ indexedFiles: 0, lastUpdatedAt: null });
+    return;
+  }
+  res.json({
+    indexedFiles: getIndexedFileCount(ws.id),
+    lastUpdatedAt: getLastIndexedAt(ws.id),
+  });
 });
 
 router.post('/update', (req, res) => {

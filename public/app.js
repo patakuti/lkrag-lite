@@ -353,6 +353,49 @@ function esc(str) {
     .replace(/"/g, '&quot;');
 }
 
+// ---------- Settings ----------
+
+async function loadSettings() {
+  try {
+    const cfg = await api('GET', '/config');
+    document.getElementById('cfg-top-k').value               = cfg.topK;
+    document.getElementById('cfg-min-sim').value             = cfg.minSimilarity;
+    document.getElementById('cfg-output-instructions').value = cfg.outputInstructions;
+  } catch (_) { /* ignore */ }
+}
+
+function showSettingsStatus(msg, isError = false) {
+  const el = document.getElementById('settings-status');
+  el.textContent = msg;
+  el.className = isError ? 'error' : 'muted';
+  el.classList.remove('hidden');
+  setTimeout(() => el.classList.add('hidden'), 3000);
+}
+
+document.getElementById('btn-save-settings').addEventListener('click', async () => {
+  const topK               = Number(document.getElementById('cfg-top-k').value);
+  const minSimilarity      = Number(document.getElementById('cfg-min-sim').value);
+  const outputInstructions = document.getElementById('cfg-output-instructions').value;
+  try {
+    await api('PUT', '/config', { topK, minSimilarity, outputInstructions });
+    showSettingsStatus('Applied.');
+  } catch (err) {
+    showSettingsStatus('Error: ' + err.message, true);
+  }
+});
+
+document.getElementById('btn-reload-env').addEventListener('click', async () => {
+  try {
+    const cfg = await api('POST', '/config/reload');
+    document.getElementById('cfg-top-k').value               = cfg.topK;
+    document.getElementById('cfg-min-sim').value             = cfg.minSimilarity;
+    document.getElementById('cfg-output-instructions').value = cfg.outputInstructions;
+    showSettingsStatus('Reloaded from .env.');
+  } catch (err) {
+    showSettingsStatus('Error: ' + err.message, true);
+  }
+});
+
 // ---------- Shutdown ----------
 
 document.getElementById('btn-shutdown').addEventListener('click', async () => {
@@ -368,4 +411,5 @@ document.getElementById('btn-shutdown').addEventListener('click', async () => {
 // ---------- Init ----------
 
 loadWorkspaces();
+loadSettings();
 pollStatus();

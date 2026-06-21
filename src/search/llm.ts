@@ -1,4 +1,5 @@
 import { RetrievedChunk } from './retriever.js';
+import { runtimeConfig } from '../config/runtime.js';
 
 export interface Citation {
   n: number;
@@ -122,18 +123,21 @@ export async function generateAnswer(
   const context  = buildContext(chunks);
   const userPrompt = `Context:\n${context}\n\nQuestion: ${query}`;
 
+  const extra = runtimeConfig.outputInstructions.trim();
+  const systemPrompt = extra ? `${SYSTEM_PROMPT}\n${extra}` : SYSTEM_PROMPT;
+
   let answer: string;
 
   if (provider === 'anthropic') {
     const apiKey = process.env.ANTHROPIC_API_KEY ?? '';
-    answer = await callAnthropic(apiKey, model, SYSTEM_PROMPT, userPrompt);
+    answer = await callAnthropic(apiKey, model, systemPrompt, userPrompt);
   } else {
     const apiKey = process.env.OPENAI_API_KEY ?? '';
     const baseUrl =
       provider === 'openai-compatible'
         ? (process.env.OPENAI_COMPATIBLE_BASE_URL ?? 'http://localhost:4000/v1').replace(/\/$/, '')
         : 'https://api.openai.com/v1';
-    answer = await callOpenAI(baseUrl, apiKey, model, SYSTEM_PROMPT, userPrompt);
+    answer = await callOpenAI(baseUrl, apiKey, model, systemPrompt, userPrompt);
   }
 
   answer = normalizeCitations(answer);

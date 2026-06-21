@@ -1,5 +1,6 @@
 import { searchChunks, getActiveWorkspace, SearchResult } from '../db/sqlite.js';
 import { embed } from './embedding.js';
+import { runtimeConfig } from '../config/runtime.js';
 
 export interface RetrievedChunk {
   n: number;
@@ -15,8 +16,8 @@ export async function retrieve(query: string): Promise<RetrievedChunk[]> {
   const ws = getActiveWorkspace();
   if (!ws) throw new Error('No active workspace');
 
-  const topK     = Number(process.env.RAG_TOP_K)            || 5;
-  const minScore = Number(process.env.RAG_MIN_SIMILARITY)   || 0.3;
+  const topK     = runtimeConfig.topK;
+  const minScore = runtimeConfig.minSimilarity;
 
   const [queryVec] = await embed([query], 'query');
   const raw: SearchResult[] = searchChunks(ws.id, queryVec, topK);

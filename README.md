@@ -11,6 +11,7 @@ Lightweight, easy-to-deploy RAG (Retrieval-Augmented Generation) system for loca
 - **Cited answers**: LLM answers with inline `[n]` citation numbers linked to source files
 - **File open**: click a citation to open the original file with the OS-associated application
 - **Flexible LLM/Embedding**: OpenAI / Anthropic / any OpenAI-compatible endpoint (LiteLLM, Ollama)
+- **Runtime settings UI**: adjust Top K, Min Similarity, and Output Instructions from the browser without restarting the server
 
 ## Requirements
 
@@ -48,17 +49,19 @@ Open http://localhost:3456 in your browser.
 | `ANTHROPIC_API_KEY` | — | Anthropic API key |
 | `RAG_CHUNK_SIZE` | `1000` | Chunk size in characters |
 | `RAG_CHUNK_OVERLAP` | `200` | Overlap between consecutive chunks |
-| `RAG_TOP_K` | `5` | Number of chunks to retrieve |
-| `RAG_MIN_SIMILARITY` | `0.3` | Minimum cosine similarity score (0–1) |
+| `RAG_TOP_K` | `5` | Number of chunks to retrieve (overridable from UI) |
+| `RAG_MIN_SIMILARITY` | `0.3` | Minimum cosine similarity score 0–1 (overridable from UI) |
+| `RAG_OUTPUT_INSTRUCTIONS` | _(empty)_ | Extra instructions appended to the LLM system prompt, e.g. `"Answer in Japanese."` (overridable from UI) |
 | `PORT` | `3456` | HTTP server port |
 
 ## Usage
 
-1. **Add a workspace**: enter a name and the directory path, click "+ 追加"
-2. **Activate**: click "切替" to make a workspace active
-3. **Index**: click "増分更新" (incremental) or "フルリビルド" (full rebuild)
-4. **Search**: type a natural language question and click "検索"
-5. **Citations**: click `[n]` in the answer or "開く" in the citation list to open the source file
+1. **Add a workspace**: click "+ Add..." and pick a directory
+2. **Activate**: select a workspace from the dropdown to make it active
+3. **Index**: click "Update" (incremental) or "Full Rebuild"
+4. **Search**: type a natural language question and click "Search"
+5. **Citations**: click `[n]` in the answer or "Open" in the citation list to open the source file
+6. **Settings**: adjust Top K, Min Similarity, and Output Instructions in the Settings panel; click "Reload .env" to reset to the values in `.env`
 
 ## Changing the Embedding Model
 

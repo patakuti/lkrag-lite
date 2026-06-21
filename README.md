@@ -92,7 +92,7 @@ Open http://localhost:3456 in your browser.
 
 ## Changing the Embedding Model
 
-If you change `EMBEDDING_MODEL` to a model with a different vector dimension, the server will return an error on the next indexing or search. Run a **full rebuild** ("フルリビルド") to re-embed all documents with the new model.
+If you change `EMBEDDING_MODEL` to a model with a different vector dimension, the server will return an error on the next indexing or search. Run a **full rebuild** to re-embed all documents with the new model.
 
 ## Development
 
@@ -112,5 +112,3 @@ npm run dev   # tsx watch mode (auto-reload on source change)
     ├── LLM (conversation history + RAG context + user input → cited answer)
     └── SQLite + sqlite-vec (embedded vector DB)
 ```
-
-See `02_design.md` for detailed design decisions (local file, not version-controlled).

@@ -50,6 +50,8 @@ function createSchema(db: Database.Database): void {
       UNIQUE(workspace_id, path)
     );
 
+    CREATE INDEX IF NOT EXISTS idx_files_workspace ON files(workspace_id);
+
     CREATE TABLE IF NOT EXISTS chunks (
       id            INTEGER PRIMARY KEY AUTOINCREMENT,
       file_id       INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
@@ -58,6 +60,9 @@ function createSchema(db: Database.Database): void {
       content       TEXT NOT NULL,
       snippet       TEXT NOT NULL
     );
+
+    CREATE INDEX IF NOT EXISTS idx_chunks_file      ON chunks(file_id);
+    CREATE INDEX IF NOT EXISTS idx_chunks_workspace ON chunks(workspace_id);
   `);
 }
 

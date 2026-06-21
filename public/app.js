@@ -338,8 +338,8 @@ async function resumeChat(sessionId) {
     const { session, messages } = await api('GET', `/chats/${sessionId}`);
     currentSessionId = sessionId;
 
-    // Switch workspace if needed
-    if (session.workspace_id != null) {
+    // Switch workspace if needed (skip if workspace was deleted)
+    if (session.workspace_id != null && session.workspace_name != null) {
       const active = workspaces.find((w) => w.is_active);
       if (!active || active.id !== session.workspace_id) {
         await api('PUT', `/workspaces/${session.workspace_id}/activate`);
@@ -404,7 +404,6 @@ function clearChat() {
 }
 
 document.getElementById('btn-new-chat').addEventListener('click', () => {
-  if (chatHistory.length > 0 && !confirm('Start a new chat? The current conversation will be cleared.')) return;
   clearChat();
 });
 

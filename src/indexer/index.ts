@@ -11,7 +11,7 @@ import * as pptxParser from './parsers/pptx.js';
 import { chunk, makeSnippet } from './chunker.js';
 import {
   getFile, upsertFile, listFileIds, deleteFile,
-  deleteChunksByFile, insertChunk, insertVec,
+  deleteChunksByFile, insertChunk, insertVec, insertFts,
   clearWorkspaceIndex, getActiveWorkspace,
 } from '../db/sqlite.js';
 import { embed } from '../search/embedding.js';
@@ -146,6 +146,7 @@ async function indexWorkspace(workspaceId: number, wsPath: string, rebuild: bool
           const snippet = makeSnippet(chunks[i]);
           const chunkId = insertChunk(fileId, workspaceId, i, chunks[i], snippet);
           insertVec(chunkId, workspaceId, embeddings[i]);
+          insertFts(chunkId, chunks[i]);
         }
       }
     }

@@ -20,6 +20,7 @@ export function initDb(dbPath: string): Database.Database {
   db.pragma('foreign_keys = ON');
 
   createSchema(db);
+  syncFtsTable(db);
   _db = db;
   return db;
 }
@@ -64,6 +65,11 @@ function createSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_chunks_file      ON chunks(file_id);
     CREATE INDEX IF NOT EXISTS idx_chunks_workspace ON chunks(workspace_id);
 
+    CREATE VIRTUAL TABLE IF NOT EXISTS fts_chunks USING fts5(
+      content,
+      tokenize='trigram'
+    );
+
     CREATE TABLE IF NOT EXISTS chat_sessions (
       id           TEXT    PRIMARY KEY,
       workspace_id INTEGER,
@@ -85,6 +91,22 @@ function createSchema(db: Database.Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_messages_session ON chat_messages(session_id);
   `);
+}
+
+// ---------- FTS sync ----------
+
+function syncFtsTable(db: Database.Database): void {
+  const chunkCount = (db.prepare('SELECT COUNT(*) as cnt FROM chunks').get() as { cnt: number }).cnt;
+  const ftsCount   = (db.prepare('SELECT COUNT(*) as cnt FROM fts_chunks').get() as { cnt: number }).cnt;
+  if (chunkCount === ftsCount) return;
+
+  const rebuild = db.transaction(() => {
+    db.exec('DELETE FROM fts_chunks');
+    const rows = db.prepare('SELECT id, content FROM chunks').all() as { id: number; content: string }[];
+    const ins = db.prepare('INSERT INTO fts_chunks(rowid, content) VALUES (?, ?)');
+    for (const row of rows) ins.run(row.id, row.content);
+  });
+  rebuild();
 }
 
 // ---------- meta ----------
@@ -219,7 +241,6 @@ export function listFileIds(workspaceId: number): { id: number; path: string }[]
 
 export function deleteFile(fileId: number): void {
   const db = getDb();
-  // Delete vec_chunks rows for all chunks of this file before deleting chunks
   const chunkIds = (
     db.prepare('SELECT id FROM chunks WHERE file_id = ?').all(fileId) as { id: number }[]
   ).map((r) => r.id);
@@ -227,6 +248,7 @@ export function deleteFile(fileId: number): void {
   const del = db.transaction(() => {
     for (const cid of chunkIds) {
       db.prepare('DELETE FROM vec_chunks WHERE rowid = ?').run(cid);
+      db.prepare('DELETE FROM fts_chunks WHERE rowid = ?').run(cid);
     }
     db.prepare('DELETE FROM files WHERE id = ?').run(fileId);
   });
@@ -253,6 +275,7 @@ export function deleteChunksByFile(fileId: number): void {
   const del = db.transaction(() => {
     for (const cid of chunkIds) {
       db.prepare('DELETE FROM vec_chunks WHERE rowid = ?').run(cid);
+      db.prepare('DELETE FROM fts_chunks WHERE rowid = ?').run(cid);
     }
     db.prepare('DELETE FROM chunks WHERE file_id = ?').run(fileId);
   });
@@ -280,6 +303,18 @@ export function insertVec(chunkId: number, workspaceId: number, embedding: numbe
     .run(BigInt(chunkId), BigInt(workspaceId), new Float32Array(embedding));
 }
 
+export function insertFts(chunkId: number, content: string): void {
+  getDb()
+    .prepare('INSERT INTO fts_chunks(rowid, content) VALUES (?, ?)')
+    .run(chunkId, content);
+}
+
+export function deleteFts(chunkId: number): void {
+  getDb()
+    .prepare('DELETE FROM fts_chunks WHERE rowid = ?')
+    .run(chunkId);
+}
+
 // ---------- search ----------
 
 export interface SearchResult {
@@ -290,6 +325,33 @@ export interface SearchResult {
   snippet: string;
   distance: number;
   filePath: string;
+}
+
+export interface FtsResult {
+  chunkId: number;
+  fileId: number;
+  content: string;
+  snippet: string;
+  filePath: string;
+}
+
+export function searchFts(workspaceId: number, query: string, limit: number): FtsResult[] {
+  const db = getDb();
+  const escaped = query.replace(/"/g, '""');
+  try {
+    return db.prepare(`
+      SELECT c.id AS chunkId, c.file_id AS fileId, c.content, c.snippet, f.path AS filePath
+      FROM fts_chunks
+      JOIN chunks c ON c.id = fts_chunks.rowid
+      JOIN files  f ON f.id = c.file_id
+      WHERE fts_chunks MATCH ?
+        AND c.workspace_id = ?
+      ORDER BY bm25(fts_chunks)
+      LIMIT ?
+    `).all(`"${escaped}"`, workspaceId, limit) as FtsResult[];
+  } catch {
+    return [];
+  }
 }
 
 export function searchChunks(workspaceId: number, queryVec: number[], topK: number): SearchResult[] {
@@ -417,6 +479,7 @@ export function clearWorkspaceIndex(workspaceId: number): void {
       ).map((r) => r.id);
       for (const cid of chunkIds) {
         db.prepare('DELETE FROM vec_chunks WHERE rowid = ?').run(cid);
+        db.prepare('DELETE FROM fts_chunks WHERE rowid = ?').run(cid);
       }
     }
     db.prepare('DELETE FROM files WHERE workspace_id = ?').run(workspaceId);

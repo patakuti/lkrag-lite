@@ -26,7 +26,7 @@ Most RAG tools treat your documents as data to be *imported* into a proprietary 
 - **Workspace management**: named workspaces pointing to local directories, one active at a time
 - **Incremental indexing**: re-indexes only changed files (mtime + size + SHA-256 hash)
 - **Supported file types**: Markdown, plain text, PDF, Word (.docx), Excel (.xlsx), PowerPoint (.pptx), HTML
-- **Vector search**: SQLite + sqlite-vec (no external DB server required)
+- **Hybrid search**: combines vector similarity search (sqlite-vec) with full-text BM25 search (SQLite FTS5), merged via Reciprocal Rank Fusion (RRF) for better recall on both semantic and keyword queries
 - **Cited answers**: LLM answers with inline `[n]` citation numbers linked to source files
 - **File open**: click a citation to open the original file with the OS-associated application
 - **Flexible LLM/Embedding**: OpenAI / Anthropic / any OpenAI-compatible endpoint (LiteLLM, Ollama)
@@ -72,7 +72,7 @@ Open http://localhost:3456 in your browser.
 | `RAG_CHUNK_SIZE` | `1000` | Chunk size in characters |
 | `RAG_CHUNK_OVERLAP` | `200` | Overlap between consecutive chunks |
 | `RAG_TOP_K` | `5` | Number of chunks to retrieve (overridable from UI) |
-| `RAG_MIN_SIMILARITY` | `0.3` | Minimum cosine similarity score 0–1 (overridable from UI) |
+| `RAG_MIN_SIMILARITY` | `0.3` | Minimum cosine similarity score 0–1 applied to vector results before RRF merge (overridable from UI) |
 | `RAG_OUTPUT_INSTRUCTIONS` | _(empty)_ | Extra instructions appended to the LLM system prompt, e.g. `"Answer in Japanese."` (overridable from UI) |
 | `QUERY_REWRITER_PROVIDER` | `openai` | `openai` / `openai-compatible` / `anthropic` |
 | `QUERY_REWRITER_MODEL` | `gpt-4o-mini` (openai) / `claude-haiku-4-5` (anthropic) | Model used by the query rewriter. Reuses `OPENAI_API_KEY` / `OPENAI_COMPATIBLE_BASE_URL` for OpenAI variants, and `ANTHROPIC_API_KEY` for Anthropic. |
@@ -108,7 +108,7 @@ npm run dev   # tsx watch mode (auto-reload on source change)
 [Express (Node.js / TypeScript)]
     ├── Indexer (fast-glob → parser → chunker → Embedding API → sqlite-vec)
     ├── Query Rewriter (conversation history + user input → clean RAG query)
-    ├── Retriever (RAG query → Embedding API → KNN search)
+    ├── Retriever (RAG query → Embedding API → vector KNN + FTS5 BM25 → RRF merge)
     ├── LLM (conversation history + RAG context + user input → cited answer)
     └── SQLite + sqlite-vec (embedded vector DB)
 ```

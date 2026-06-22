@@ -74,8 +74,8 @@ Open http://localhost:3456 in your browser.
 | `RAG_TOP_K` | `5` | Number of chunks to retrieve (overridable from UI) |
 | `RAG_MIN_SIMILARITY` | `0.3` | Minimum cosine similarity score 0–1 (overridable from UI) |
 | `RAG_OUTPUT_INSTRUCTIONS` | _(empty)_ | Extra instructions appended to the LLM system prompt, e.g. `"Answer in Japanese."` (overridable from UI) |
-| `QUERY_REWRITER_PROVIDER` | `openai` | `openai` / `openai-compatible` (Anthropic not supported) |
-| `QUERY_REWRITER_MODEL` | `gpt-4o-mini` | Model used by the query rewriter (reuses `OPENAI_API_KEY` / `OPENAI_COMPATIBLE_BASE_URL`) |
+| `QUERY_REWRITER_PROVIDER` | `openai` | `openai` / `openai-compatible` / `anthropic` |
+| `QUERY_REWRITER_MODEL` | `gpt-4o-mini` (openai) / `claude-haiku-4-5` (anthropic) | Model used by the query rewriter. Reuses `OPENAI_API_KEY` / `OPENAI_COMPATIBLE_BASE_URL` for OpenAI variants, and `ANTHROPIC_API_KEY` for Anthropic. |
 | `PORT` | `3456` | HTTP server port |
 
 ## Usage

@@ -131,6 +131,54 @@ async function callOpenAIStructured(
 
 // ---------- Anthropic ----------
 
+async function callAnthropicStructured(
+  apiKey: string,
+  model: string,
+  systemPrompt: string,
+  userPrompt: string
+): Promise<string> {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 256,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }],
+      tools: [{
+        name: 'search_query',
+        description: 'Output a structured search query',
+        input_schema: {
+          type: 'object',
+          properties: {
+            search_query: { type: 'string' },
+          },
+          required: ['search_query'],
+        },
+      }],
+      tool_choice: { type: 'tool', name: 'search_query' },
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Query rewriter API error ${res.status}: ${text}`);
+  }
+
+  const json = await res.json() as {
+    content: { type: string; name?: string; input?: unknown }[];
+  };
+  const toolUse = json.content.find((b) => b.type === 'tool_use' && b.name === 'search_query');
+  if (toolUse?.input) {
+    return JSON.stringify(toolUse.input);
+  }
+  return '{}';
+}
+
 async function callAnthropic(
   apiKey: string,
   model: string,
@@ -171,12 +219,6 @@ export async function rewriteQuery(
   history: ConversationMessage[]
 ): Promise<{ searchQuery: string; fallback: boolean }> {
   const provider = process.env.QUERY_REWRITER_PROVIDER ?? 'openai';
-  const model    = process.env.QUERY_REWRITER_MODEL    ?? 'gpt-4o-mini';
-  const apiKey   = process.env.OPENAI_API_KEY ?? '';
-  const baseUrl  =
-    provider === 'openai-compatible'
-      ? (process.env.OPENAI_COMPATIBLE_BASE_URL ?? 'http://localhost:4000/v1').replace(/\/$/, '')
-      : 'https://api.openai.com/v1';
 
   const historyText = history
     .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
@@ -186,7 +228,22 @@ export async function rewriteQuery(
     : `User message: ${userInput}`;
 
   try {
-    const raw = await callOpenAIStructured(baseUrl, apiKey, model, REWRITER_SYSTEM_PROMPT, userPrompt);
+    let raw: string;
+
+    if (provider === 'anthropic') {
+      const apiKey = process.env.ANTHROPIC_API_KEY ?? '';
+      const model  = process.env.QUERY_REWRITER_MODEL ?? 'claude-haiku-4-5';
+      raw = await callAnthropicStructured(apiKey, model, REWRITER_SYSTEM_PROMPT, userPrompt);
+    } else {
+      const model   = process.env.QUERY_REWRITER_MODEL ?? 'gpt-4o-mini';
+      const apiKey  = process.env.OPENAI_API_KEY ?? '';
+      const baseUrl =
+        provider === 'openai-compatible'
+          ? (process.env.OPENAI_COMPATIBLE_BASE_URL ?? 'http://localhost:4000/v1').replace(/\/$/, '')
+          : 'https://api.openai.com/v1';
+      raw = await callOpenAIStructured(baseUrl, apiKey, model, REWRITER_SYSTEM_PROMPT, userPrompt);
+    }
+
     const parsed = JSON.parse(raw) as { search_query?: unknown };
     const searchQuery = typeof parsed.search_query === 'string' && parsed.search_query.trim()
       ? parsed.search_query.trim()

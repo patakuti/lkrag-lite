@@ -12,7 +12,7 @@ import { chunk, makeSnippet } from './chunker.js';
 import {
   getFile, upsertFile, listFileIds, deleteFile,
   deleteChunksByFile, insertChunk, insertVec, insertFts,
-  clearWorkspaceIndex, getActiveWorkspace,
+  clearWorkspaceIndex, getActiveWorkspace, Workspace,
 } from '../db/sqlite.js';
 import { embed } from '../search/embedding.js';
 
@@ -206,4 +206,48 @@ export async function runRebuild(): Promise<void> {
   indexWorkspace(ws.id, ws.path, true)
     .catch((err) => { status.error = String(err); })
     .finally(() => { status.state = 'idle'; status.currentFile = null; });
+}
+
+// ---------- CLI API (awaitable, workspace explicit) ----------
+
+export async function runUpdateForWorkspace(ws: Workspace): Promise<void> {
+  if (status.state === 'indexing') throw new Error('Already indexing');
+
+  status = {
+    state: 'indexing',
+    total: 0,
+    processed: 0,
+    currentFile: null,
+    startedAt: new Date().toISOString(),
+    error: null,
+    cancelRequested: false,
+  };
+
+  try {
+    await indexWorkspace(ws.id, ws.path, false);
+  } finally {
+    status.state = 'idle';
+    status.currentFile = null;
+  }
+}
+
+export async function runRebuildForWorkspace(ws: Workspace): Promise<void> {
+  if (status.state === 'indexing') throw new Error('Already indexing');
+
+  status = {
+    state: 'indexing',
+    total: 0,
+    processed: 0,
+    currentFile: null,
+    startedAt: new Date().toISOString(),
+    error: null,
+    cancelRequested: false,
+  };
+
+  try {
+    await indexWorkspace(ws.id, ws.path, true);
+  } finally {
+    status.state = 'idle';
+    status.currentFile = null;
+  }
 }

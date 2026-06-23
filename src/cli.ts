@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import 'dotenv/config';
 import path from 'path';
 import fs from 'fs';
 import dotenv from 'dotenv';
@@ -8,10 +7,17 @@ import { initDb, listWorkspaces, addWorkspace, getIndexedFileCount, getLastIndex
 import { runUpdateForWorkspace, runRebuildForWorkspace, getStatus } from './indexer/index.js';
 import { retrieveForWorkspace, RetrievedChunk } from './search/retriever.js';
 
+// Load .env from the project root (dirname of this script's directory)
+// so lkragl works correctly regardless of the current working directory.
+const projectRoot = path.resolve(__dirname, '..');
+dotenv.config({ path: path.join(projectRoot, '.env'), quiet: true });
+
 // ---------- DB init ----------
 
 function initDbFromEnv(): void {
-  const dbPath = process.env.DATABASE_PATH || './data/lkrag.db';
+  const dbPath = process.env.DATABASE_PATH
+    ? path.resolve(projectRoot, process.env.DATABASE_PATH)
+    : path.join(projectRoot, 'data', 'lkrag.db');
   initDb(dbPath);
 }
 
@@ -106,7 +112,7 @@ function loadEnvFile(envFile: string | undefined): void {
     process.stderr.write(`Warning: env file not found: ${resolved}\n`);
     return;
   }
-  dotenv.config({ path: resolved, override: true });
+  dotenv.config({ path: resolved, override: true, quiet: true });
 }
 
 // ---------- CLI definition ----------

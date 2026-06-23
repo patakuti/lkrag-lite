@@ -4,7 +4,7 @@ import fs from 'fs';
 import dotenv from 'dotenv';
 import { Command, InvalidArgumentError } from 'commander';
 import { initDb, listWorkspaces, addWorkspace, getIndexedFileCount, getLastIndexedAt, Workspace } from './db/sqlite.js';
-import { runUpdateForWorkspace, runRebuildForWorkspace, getStatus } from './indexer/index.js';
+import { runUpdateForWorkspace, runRebuildForWorkspace, getStatus, requestCancel } from './indexer/index.js';
 import { retrieveForWorkspace, RetrievedChunk } from './search/retriever.js';
 
 // Load .env from the project root (dirname of this script's directory)
@@ -180,14 +180,24 @@ sharedOptions(
   const ws = resolveWorkspace(opts, 'require');
   if (!opts.quiet) process.stderr.write(`Updating index for workspace "${ws.name}" (${ws.path})...\n`);
 
-  await runUpdateForWorkspace(ws);
+  const onSigint = () => {
+    process.stderr.write('\nCancelling... waiting for current file to finish.\n');
+    requestCancel();
+  };
+  process.once('SIGINT', onSigint);
+  try {
+    await runUpdateForWorkspace(ws);
+  } finally {
+    process.removeListener('SIGINT', onSigint);
+  }
 
   const s = getStatus();
   if (s.error) {
     process.stderr.write(`Error: ${s.error}\n`);
     process.exit(1);
   }
-  if (!opts.quiet) process.stderr.write(`Done. Processed ${s.processed} / ${s.total} files.\n`);
+  const cancelled = s.cancelRequested ? ' (cancelled)' : '';
+  if (!opts.quiet) process.stderr.write(`Done. Processed ${s.processed} / ${s.total} files${cancelled}.\n`);
 });
 
 // ---------- rebuild-index ----------
@@ -202,14 +212,24 @@ sharedOptions(
   const ws = resolveWorkspace(opts, 'auto-register');
   if (!opts.quiet) process.stderr.write(`Rebuilding index for workspace "${ws.name}" (${ws.path})...\n`);
 
-  await runRebuildForWorkspace(ws);
+  const onSigint = () => {
+    process.stderr.write('\nCancelling... waiting for current file to finish.\n');
+    requestCancel();
+  };
+  process.once('SIGINT', onSigint);
+  try {
+    await runRebuildForWorkspace(ws);
+  } finally {
+    process.removeListener('SIGINT', onSigint);
+  }
 
   const s = getStatus();
   if (s.error) {
     process.stderr.write(`Error: ${s.error}\n`);
     process.exit(1);
   }
-  if (!opts.quiet) process.stderr.write(`Done. Processed ${s.processed} / ${s.total} files.\n`);
+  const cancelled = s.cancelRequested ? ' (cancelled)' : '';
+  if (!opts.quiet) process.stderr.write(`Done. Processed ${s.processed} / ${s.total} files${cancelled}.\n`);
 });
 
 // ---------- status ----------

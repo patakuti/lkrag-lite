@@ -34,6 +34,7 @@ Most RAG tools treat your documents as data to be *imported* into a proprietary 
 - **Multi-turn chat**: conversational UI that carries context across turns
 - **Query rewriter**: LLM automatically rewrites follow-up questions into clean, standalone RAG search queries
 - **Chat history**: chats are auto-saved to SQLite and can be resumed at any time; history is shown across all workspaces
+- **CLI tool** (`lkragl`): command-line interface for search and index management, suitable for cron jobs, editor integrations, and automation
 
 ## Requirements
 
@@ -90,6 +91,77 @@ Open http://localhost:3456 in your browser.
 8. **Delete chats**: click "×" next to a chat to delete it, or "Delete All" to clear all history
 9. **Settings**: adjust Top K, Min Similarity, and Output Instructions in the Settings panel; click "Reload .env" to reset to the values in `.env`
 
+## CLI Tool (`lkragl`)
+
+A command-line interface for index management and search, suitable for cron jobs, editor integrations, and automation.
+
+### Installation
+
+```bash
+npm run build
+npm link   # makes lkragl available in PATH
+```
+
+### Commands
+
+```
+lkragl search <query>       Search indexed documents
+lkragl update-index         Incrementally update the index
+lkragl rebuild-index        Rebuild the entire index from scratch
+lkragl status               Show index status
+```
+
+### Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--workspace-path <path>` | current directory | Workspace to operate on (mutually exclusive with `--find-workspace`) |
+| `--find-workspace` | — | Traverse up from current directory to find a registered workspace |
+| `--limit <n>` | 5 | Number of search results (`search` only) |
+| `--min-similarity <n>` | 0.3 | Minimum similarity score 0–1 (`search` only) |
+| `--format <fmt>` | plain | Output format: `plain`, `tsv`, `json` (`search` only) |
+| `--quiet` | — | Suppress informational messages on stderr |
+| `--env-file <path>` | — | Load additional .env file |
+
+`--workspace-path` and `--find-workspace` are mutually exclusive.
+
+### Workspace resolution
+
+| Command | Unregistered path | `--find-workspace` (not found) |
+|---------|-------------------|-------------------------------|
+| `search` | Error | Error |
+| `update-index` | Error | Error |
+| `rebuild-index` | **Auto-register** and index | Error |
+| `status` | Error | Error |
+
+### Examples
+
+```bash
+# Search with plain output
+lkragl search "authentication flow" --workspace-path /path/to/docs
+
+# Search from a subdirectory — finds the nearest indexed ancestor automatically
+lkragl search "error handling" --find-workspace
+
+# TSV output for editor integration (path, line, score, content)
+lkragl search "setup guide" --format tsv --limit 10
+
+# JSON output for scripting
+lkragl search "database schema" --format json | jq '.[0].filePath'
+
+# Register and build index for the first time
+lkragl rebuild-index --workspace-path /path/to/docs
+
+# Update index incrementally from a subdirectory
+lkragl update-index --find-workspace
+
+# Schedule index updates via cron (daily at 3am)
+# 0 3 * * * node /path/to/dist/cli.js update-index --workspace-path /path/to/docs
+
+# Check index status
+lkragl status
+```
+
 ## Changing the Embedding Model
 
 If you change `EMBEDDING_MODEL` to a model with a different vector dimension, the server will return an error on the next indexing or search. Run a **full rebuild** to re-embed all documents with the new model.
@@ -103,9 +175,9 @@ npm run dev   # tsx watch mode (auto-reload on source change)
 ## Architecture
 
 ```
-[Browser]
-    ↕ HTTP
-[Express (Node.js / TypeScript)]
+[Browser]                          [CLI: lkragl]
+    ↕ HTTP                              ↕
+[Express (Node.js / TypeScript)]   [cli.ts]
     ├── Indexer (fast-glob → parser → chunker → Embedding API → sqlite-vec)
     ├── Query Rewriter (conversation history + user input → clean RAG query)
     ├── Retriever (RAG query → Embedding API → vector KNN + FTS5 BM25 → RRF merge)

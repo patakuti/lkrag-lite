@@ -14,18 +14,17 @@ export interface RetrievedChunk {
 
 const RRF_K = 60;
 
-export async function retrieve(query: string): Promise<RetrievedChunk[]> {
-  const ws = getActiveWorkspace();
-  if (!ws) throw new Error('No active workspace');
-
-  const topK     = runtimeConfig.topK;
-  const minScore = runtimeConfig.minSimilarity;
-  const fetchN   = topK * 2;
-
+async function retrieveByWorkspaceId(
+  query: string,
+  workspaceId: number,
+  topK: number,
+  minScore: number,
+): Promise<RetrievedChunk[]> {
+  const fetchN = topK * 2;
   const [queryVec] = await embed([query], 'query');
 
-  const vecRaw = searchChunks(ws.id, queryVec, fetchN);
-  const ftsRaw = searchFts(ws.id, query, fetchN);
+  const vecRaw = searchChunks(workspaceId, queryVec, fetchN);
+  const ftsRaw = searchFts(workspaceId, query, fetchN);
 
   // Apply min similarity filter to vec results before ranking
   const vecFiltered = vecRaw
@@ -71,4 +70,18 @@ export async function retrieve(query: string): Promise<RetrievedChunk[]> {
       snippet: r.snippet,
       score: Math.round(r.rrfScore * 10000) / 10000,
     }));
+}
+
+export async function retrieve(query: string): Promise<RetrievedChunk[]> {
+  const ws = getActiveWorkspace();
+  if (!ws) throw new Error('No active workspace');
+  return retrieveByWorkspaceId(query, ws.id, runtimeConfig.topK, runtimeConfig.minSimilarity);
+}
+
+export async function retrieveForWorkspace(
+  query: string,
+  workspaceId: number,
+  options: { topK: number; minSimilarity: number },
+): Promise<RetrievedChunk[]> {
+  return retrieveByWorkspaceId(query, workspaceId, options.topK, options.minSimilarity);
 }

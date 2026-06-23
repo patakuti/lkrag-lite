@@ -4,6 +4,9 @@
   "description": "Lightweight, easy-to-deploy RAG system for local files",
   "license": "MIT",
   "main": "dist/server.js",
+  "bin": {
+    "lkragl": "dist/cli.js"
+  },
   "scripts": {
     "build": "tsc && node -e \"require('fs').copyFileSync('node_modules/marked/lib/marked.umd.js','public/marked.min.js')\"",
     "start": "node dist/server.js",
@@ -12,6 +15,7 @@
   "dependencies": {
     "better-sqlite3": "^12.11.1",
     "cheerio": "^1.2.0",
+    "commander": "^12.1.0",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "fast-glob": "^3.3.3",

@@ -1,9 +1,10 @@
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { Router } from 'express';
 
 const router = Router();
-const HOME = process.env.HOME ?? '/';
+const HOME = os.homedir();
 
 function safePath(raw: string): string | null {
   const expanded = raw.startsWith('~') ? HOME + raw.slice(1) : raw;

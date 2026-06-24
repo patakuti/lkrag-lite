@@ -10,7 +10,8 @@
   "scripts": {
     "build": "tsc && node -e \"require('fs').copyFileSync('node_modules/marked/lib/marked.umd.js','public/marked.min.js')\"",
     "start": "node dist/server.js",
-    "dev": "tsx watch src/server.ts"
+    "dev": "tsx watch src/server.ts",
+    "pkg:build": "pkg dist/cli.js --config package.json --out-path pkg-dist"
   },
   "dependencies": {
     "better-sqlite3": "^12.11.1",
@@ -26,11 +27,26 @@
     "sqlite-vec": "^0.1.9",
     "xlsx": "^0.18.5"
   },
+  "pkg": {
+    "scripts": [
+      "node_modules/fflate/lib/*.cjs"
+    ],
+    "assets": [
+      "node_modules/better-sqlite3/build/Release/better_sqlite3.node",
+      "node_modules/sqlite-vec-linux-x64/vec0.so",
+      "node_modules/sqlite-vec-windows-x64/vec0.dll",
+      "node_modules/sqlite-vec-darwin-arm64/vec0.dylib",
+      "node_modules/sqlite-vec-darwin-x64/vec0.dylib"
+    ],
+    "fallbackToSource": true,
+    "outputPath": "pkg-dist"
+  },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/express": "^5.0.6",
     "@types/node": "^26.0.0",
     "@types/pdf-parse": "^1.1.5",
+    "@yao-pkg/pkg": "^6.20.0",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3"
   }

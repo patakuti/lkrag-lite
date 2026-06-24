@@ -1,7 +1,28 @@
+import os from 'os';
 import path from 'path';
 import fs from 'fs';
 import Database from 'better-sqlite3';
 import * as sqliteVec from 'sqlite-vec';
+
+// When running as a pkg standalone binary, the sqlite-vec native extension
+// (.so/.dll/.dylib) lives in pkg's virtual FS and cannot be dlopen()ed directly.
+// We extract it to a real temp path on first use.
+function loadSqliteVecExtension(db: Database.Database): void {
+  if (!(process as unknown as { pkg?: boolean }).pkg) {
+    sqliteVec.load(db);
+    return;
+  }
+  const src = sqliteVec.getLoadablePath();
+  const dst = path.join(os.tmpdir(), path.basename(src));
+  try {
+    fs.copyFileSync(src, dst);
+  } catch {
+    if (!fs.existsSync(dst)) {
+      throw new Error(`Failed to extract sqlite-vec extension to ${dst}`);
+    }
+  }
+  db.loadExtension(dst);
+}
 
 let _db: Database.Database | null = null;
 
@@ -15,7 +36,7 @@ export function initDb(dbPath: string): Database.Database {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
   const db = new Database(dbPath);
-  sqliteVec.load(db);
+  loadSqliteVecExtension(db);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
 

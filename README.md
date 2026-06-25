@@ -38,7 +38,7 @@ Most RAG tools treat your documents as data to be *imported* into a proprietary 
 
 ## Requirements
 
-- Node.js 18+
+- Node.js 20 or 22 LTS
 - npm
 
 ## Setup
@@ -96,6 +96,14 @@ Open http://localhost:3456 in your browser.
 A command-line interface for index management and search, suitable for cron jobs, editor integrations, and automation.
 
 ### Installation
+
+**Windows** — download the prebuilt binary from [GitHub Releases](https://github.com/patakuti/lkrag-lite/releases):
+
+1. Download `lkragl-windows-x64.exe` from the latest release
+2. Place it somewhere in your `PATH` (e.g. `C:\Users\<you>\bin\`)
+3. Run `lkragl` from the command prompt or PowerShell
+
+**Linux / macOS** — install via npm after cloning and building the server:
 
 ```bash
 npm run build

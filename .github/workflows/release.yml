@@ -14,15 +14,9 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: ubuntu-latest
-            target: node22-linux-x64
-            artifact: lkragl-linux-x64
           - os: windows-latest
             target: node22-win-x64
             artifact: lkragl-windows-x64.exe
-          - os: macos-latest
-            target: node22-macos-arm64
-            artifact: lkragl-macos-arm64
 
     runs-on: ${{ matrix.os }}
 

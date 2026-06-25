@@ -13,3 +13,6 @@ public/marked.min.js
 # Runtime data and secrets
 data/
 .env
+
+# Distribution archives
+*.zip

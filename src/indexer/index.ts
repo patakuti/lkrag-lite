@@ -125,6 +125,13 @@ async function indexWorkspace(workspaceId: number, wsPath: string, rebuild: bool
     const stat = fs.statSync(absPath);
     const mtime = stat.mtimeMs;
     const size = stat.size;
+
+    const maxFileSize = Number(process.env.RAG_MAX_FILE_SIZE) || 10 * 1024 * 1024;
+    if (size > maxFileSize) {
+      status.processed++;
+      continue;
+    }
+
     const hash = fileHash(absPath);
 
     seenPaths.add(relPath);

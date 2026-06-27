@@ -2,6 +2,30 @@ import { checkEmbeddingDim } from '../db/sqlite.js';
 
 export type EmbeddingPurpose = 'query' | 'document';
 
+async function embedBatch(
+  input: string[],
+  baseUrl: string,
+  apiKey: string,
+  model: string,
+): Promise<number[][]> {
+  const res = await fetch(`${baseUrl}/embeddings`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({ model, input }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Embedding API error ${res.status}: ${text}`);
+  }
+
+  const json = await res.json() as { data: { embedding: number[]; index: number }[] };
+  return json.data.sort((a, b) => a.index - b.index).map((d) => d.embedding);
+}
+
 export async function embed(texts: string[], purpose?: EmbeddingPurpose): Promise<number[][]> {
   const provider = process.env.EMBEDDING_PROVIDER ?? 'openai';
   const model    = process.env.EMBEDDING_MODEL    ?? 'text-embedding-3-small';
@@ -21,23 +45,14 @@ export async function embed(texts: string[], purpose?: EmbeddingPurpose): Promis
                : '';
   const input = prefix ? texts.map((t) => prefix + t) : texts;
 
-  const res = await fetch(`${baseUrl}/embeddings`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({ model, input }),
-  });
+  const batchSize = Number(process.env.EMBEDDING_BATCH_SIZE) || 500;
+  const embeddings: number[][] = [];
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Embedding API error ${res.status}: ${text}`);
+  for (let i = 0; i < input.length; i += batchSize) {
+    const batch = input.slice(i, i + batchSize);
+    const batchEmbeddings = await embedBatch(batch, baseUrl, apiKey, model);
+    embeddings.push(...batchEmbeddings);
   }
-
-  const json = await res.json() as { data: { embedding: number[]; index: number }[] };
-  const sorted = json.data.sort((a, b) => a.index - b.index);
-  const embeddings = sorted.map((d) => d.embedding);
 
   if (embeddings.length > 0) {
     checkEmbeddingDim(model, embeddings[0].length);

@@ -4,21 +4,26 @@ import path from 'path';
 import { Router } from 'express';
 
 const router = Router();
-// BROWSE_ROOT restricts browsing to a subtree; defaults to the user's home directory.
+
+// Evaluated per-request so that BROWSE_ROOT is read after dotenv.config() runs.
 // path.resolve normalises slash direction on Windows (C:/foo → C:\foo).
-const HOME = process.env.BROWSE_ROOT
-  ? path.resolve(process.env.BROWSE_ROOT)
-  : os.homedir();
+function getBrowseRoot(): string {
+  return process.env.BROWSE_ROOT
+    ? path.resolve(process.env.BROWSE_ROOT)
+    : os.homedir();
+}
 
 function safePath(raw: string): string | null {
-  const expanded = raw.startsWith('~') ? HOME + raw.slice(1) : raw;
+  const root = getBrowseRoot();
+  const expanded = raw.startsWith('~') ? root + raw.slice(1) : raw;
   const resolved = path.resolve(expanded);
-  if (resolved !== HOME && !resolved.startsWith(HOME + path.sep)) return null;
+  if (resolved !== root && !resolved.startsWith(root + path.sep)) return null;
   return resolved;
 }
 
 router.get('/', (req, res) => {
-  const rawPath = (req.query.path as string) || HOME;
+  const root = getBrowseRoot();
+  const rawPath = (req.query.path as string) || root;
   const dir = safePath(rawPath);
   if (!dir) {
     res.status(403).json({ error: 'access denied' });
@@ -39,7 +44,7 @@ router.get('/', (req, res) => {
     .sort();
 
   const parentRaw = path.dirname(dir);
-  const parent = dir === HOME ? null : (safePath(parentRaw) ?? null);
+  const parent = dir === root ? null : (safePath(parentRaw) ?? null);
 
   res.json({ current: dir, parent, dirs });
 });

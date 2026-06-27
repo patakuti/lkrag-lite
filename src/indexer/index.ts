@@ -122,39 +122,47 @@ async function indexWorkspace(workspaceId: number, wsPath: string, rebuild: bool
       continue;
     }
 
-    const stat = fs.statSync(absPath);
-    const mtime = stat.mtimeMs;
-    const size = stat.size;
+    try {
+      const stat = fs.statSync(absPath);
+      const mtime = stat.mtimeMs;
+      const size = stat.size;
 
-    const maxFileSize = Number(process.env.RAG_MAX_FILE_SIZE) || 10 * 1024 * 1024;
-    if (size > maxFileSize) {
-      status.processed++;
-      continue;
-    }
+      const maxFileSize = Number(process.env.RAG_MAX_FILE_SIZE) || 10 * 1024 * 1024;
+      if (size > maxFileSize) {
+        status.processed++;
+        continue;
+      }
 
-    const hash = fileHash(absPath);
+      const hash = fileHash(absPath);
 
-    seenPaths.add(relPath);
+      seenPaths.add(relPath);
 
-    const existing = getFile(workspaceId, relPath);
-    const unchanged = existing && existing.mtime === mtime && existing.size === size && existing.hash === hash;
+      const existing = getFile(workspaceId, relPath);
+      const unchanged = existing && existing.mtime === mtime && existing.size === size && existing.hash === hash;
 
-    if (!unchanged) {
-      // Remove old chunks/vecs if re-indexing
-      if (existing) deleteChunksByFile(existing.id);
+      if (!unchanged) {
+        // Remove old chunks/vecs if re-indexing
+        if (existing) deleteChunksByFile(existing.id);
 
-      const text = await parser.parse(absPath);
-      const chunks = chunk(text, chunkSize, chunkOverlap);
-      const fileId = upsertFile(workspaceId, relPath, mtime, size, hash);
+        const text = await parser.parse(absPath);
+        const chunks = chunk(text, chunkSize, chunkOverlap);
+        const fileId = upsertFile(workspaceId, relPath, mtime, size, hash);
 
-      if (chunks.length > 0) {
-        const embeddings = await embed(chunks, 'document');
-        for (let i = 0; i < chunks.length; i++) {
-          const snippet = makeSnippet(chunks[i]);
-          const chunkId = insertChunk(fileId, workspaceId, i, chunks[i], snippet);
-          insertVec(chunkId, workspaceId, embeddings[i]);
-          insertFts(chunkId, chunks[i]);
+        if (chunks.length > 0) {
+          const embeddings = await embed(chunks, 'document');
+          for (let i = 0; i < chunks.length; i++) {
+            const snippet = makeSnippet(chunks[i]);
+            const chunkId = insertChunk(fileId, workspaceId, i, chunks[i], snippet);
+            insertVec(chunkId, workspaceId, embeddings[i]);
+            insertFts(chunkId, chunks[i]);
+          }
         }
+      }
+    } catch (err: unknown) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        process.stderr.write(`[indexer] skipped (file removed): ${absPath}\n`);
+      } else {
+        throw err;
       }
     }
 

@@ -524,6 +524,7 @@ function appendAIBubble({ answer, citations, rewriterFallback }) {
           <span class="citation-path">${esc(c.path)}</span>
           <span class="citation-score">score: ${c.score}</span>
           <button class="btn-open btn-link" data-path="${esc(c.path)}">Open</button>
+          <button class="btn-copy-path btn-link" data-path="${esc(c.absolutePath)}">Copy</button>
         </div>
         <div class="citation-snippet">"${esc(c.snippet)}"</div>
       </div>
@@ -531,6 +532,16 @@ function appendAIBubble({ answer, citations, rewriterFallback }) {
 
     inner.querySelectorAll('.btn-open').forEach((btn) => {
       btn.addEventListener('click', () => openFile(btn.dataset.path));
+    });
+
+    inner.querySelectorAll('.btn-copy-path').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        navigator.clipboard.writeText(btn.dataset.path).then(() => {
+          const orig = btn.textContent;
+          btn.textContent = 'Copied!';
+          setTimeout(() => { btn.textContent = orig; }, 1500);
+        });
+      });
     });
 
     details.appendChild(inner);

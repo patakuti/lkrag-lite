@@ -1,4 +1,5 @@
-import { searchChunks, searchFts, getActiveWorkspace } from '../db/sqlite.js';
+import path from 'path';
+import { searchChunks, searchFts, getActiveWorkspace, listWorkspaces } from '../db/sqlite.js';
 import { embed } from './embedding.js';
 import { runtimeConfig } from '../config/runtime.js';
 
@@ -7,6 +8,7 @@ export interface RetrievedChunk {
   chunkId: number;
   fileId: number;
   filePath: string;
+  absolutePath: string;
   content: string;
   snippet: string;
   score: number;
@@ -17,6 +19,7 @@ const RRF_K = 60;
 async function retrieveByWorkspaceId(
   query: string,
   workspaceId: number,
+  wsPath: string,
   topK: number,
   minScore: number,
 ): Promise<RetrievedChunk[]> {
@@ -66,6 +69,7 @@ async function retrieveByWorkspaceId(
       chunkId: r.chunkId,
       fileId: r.fileId,
       filePath: r.filePath,
+      absolutePath: path.join(wsPath, r.filePath),
       content: r.content,
       snippet: r.snippet,
       score: Math.round(r.rrfScore * 10000) / 10000,
@@ -75,7 +79,7 @@ async function retrieveByWorkspaceId(
 export async function retrieve(query: string): Promise<RetrievedChunk[]> {
   const ws = getActiveWorkspace();
   if (!ws) throw new Error('No active workspace');
-  return retrieveByWorkspaceId(query, ws.id, runtimeConfig.topK, runtimeConfig.minSimilarity);
+  return retrieveByWorkspaceId(query, ws.id, ws.path, runtimeConfig.topK, runtimeConfig.minSimilarity);
 }
 
 export async function retrieveForWorkspace(
@@ -83,5 +87,7 @@ export async function retrieveForWorkspace(
   workspaceId: number,
   options: { topK: number; minSimilarity: number },
 ): Promise<RetrievedChunk[]> {
-  return retrieveByWorkspaceId(query, workspaceId, options.topK, options.minSimilarity);
+  const ws = listWorkspaces().find((w) => w.id === workspaceId);
+  if (!ws) throw new Error(`Workspace ${workspaceId} not found`);
+  return retrieveByWorkspaceId(query, workspaceId, ws.path, options.topK, options.minSimilarity);
 }

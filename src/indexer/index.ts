@@ -144,7 +144,7 @@ async function indexWorkspace(workspaceId: number, wsPath: string, rebuild: bool
         // Remove old chunks/vecs if re-indexing
         if (existing) deleteChunksByFile(existing.id);
 
-        const text = await parser.parse(absPath);
+        const text = (await parser.parse(absPath)).toWellFormed();
         const chunks = chunk(text, chunkSize, chunkOverlap);
         const fileId = upsertFile(workspaceId, relPath, mtime, size, hash);
 
@@ -162,7 +162,8 @@ async function indexWorkspace(workspaceId: number, wsPath: string, rebuild: bool
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
         process.stderr.write(`[indexer] skipped (file removed): ${absPath}\n`);
       } else {
-        throw err;
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(`${relPath}: ${msg}`);
       }
     }
 

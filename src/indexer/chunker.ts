@@ -24,7 +24,7 @@ export function chunk(text: string, size: number, overlap: number): string[] {
   while (start < text.length) {
     const rawEnd = Math.min(start + size, text.length);
     const end = rawEnd < text.length ? findBoundary(text, rawEnd, window) : rawEnd;
-    const piece = text.slice(start, end).trim();
+    const piece = text.slice(start, end).trim().toWellFormed();
     if (piece.length > 0) chunks.push(piece);
     if (end >= text.length) break;
     start = Math.max(start + 1, end - overlap);

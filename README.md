@@ -14,12 +14,14 @@ Most RAG tools treat your documents as data to be *imported* into a proprietary 
 | **Embedded vector DB** (no separate DB server) | ○ | × | × | ○ | △ ² |
 | **Query rewriter** (auto-rewrites follow-up questions for RAG) | ○ | △ ³ | △ ³ | × | × |
 | **Chat history** (persistent, resumable across workspaces) | ○ | ○ | ○ | ○ | × |
+| **CLI tool** (search & index management for cron / editor integration) | ○ | × | × | × | △ ⁵ |
 | **Simple setup** (`npm install && npm start`) | ○ | × | × | △ ⁴ | △ |
 
 ¹ AnythingLLM: file-level watching only (beta); directory-wide indexing is not supported  
 ² PrivateGPT: only when using Qdrant in local embedded mode  
 ³ Dify / RAGFlow: achievable via workflow configuration, but not automatic out of the box  
 ⁴ AnythingLLM: desktop app available, but initial configuration involves multiple steps  
+⁵ PrivateGPT: CLI available but limited to basic ingestion/query; no cron-friendly index management  
 
 ## Features
 
@@ -164,7 +166,7 @@ lkragl rebuild-index --workspace-path /path/to/docs
 lkragl update-index --find-workspace
 
 # Schedule index updates via cron (daily at 3am)
-# 0 3 * * * node /path/to/dist/cli.js update-index --workspace-path /path/to/docs
+# 0 3 * * * lkragl update-index --workspace-path /path/to/docs
 
 # Check index status
 lkragl status

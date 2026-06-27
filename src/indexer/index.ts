@@ -162,7 +162,7 @@ async function indexWorkspace(workspaceId: number, wsPath: string, rebuild: bool
         process.stderr.write(`[indexer] skipped (file removed): ${absPath}\n`);
       } else {
         const msg = err instanceof Error ? err.message : String(err);
-        throw new Error(`${relPath}: ${msg}`);
+        process.stderr.write(`[indexer] skipped (parse error): ${relPath}: ${msg}\n`);
       }
     }
 

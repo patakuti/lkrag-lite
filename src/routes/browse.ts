@@ -4,7 +4,11 @@ import path from 'path';
 import { Router } from 'express';
 
 const router = Router();
-const HOME = os.homedir();
+// BROWSE_ROOT restricts browsing to a subtree; defaults to the user's home directory.
+// path.resolve normalises slash direction on Windows (C:/foo → C:\foo).
+const HOME = process.env.BROWSE_ROOT
+  ? path.resolve(process.env.BROWSE_ROOT)
+  : os.homedir();
 
 function safePath(raw: string): string | null {
   const expanded = raw.startsWith('~') ? HOME + raw.slice(1) : raw;

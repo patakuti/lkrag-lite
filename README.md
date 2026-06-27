@@ -80,6 +80,7 @@ Open http://localhost:3456 in your browser.
 | `QUERY_REWRITER_PROVIDER` | `openai` | `openai` / `openai-compatible` / `anthropic` |
 | `QUERY_REWRITER_MODEL` | `gpt-4o-mini` (openai) / `claude-haiku-4-5` (anthropic) | Model used by the query rewriter. Reuses `OPENAI_API_KEY` / `OPENAI_COMPATIBLE_BASE_URL` for OpenAI variants, and `ANTHROPIC_API_KEY` for Anthropic. |
 | `PORT` | `3456` | HTTP server port |
+| `BROWSE_ROOT` | _(user home)_ | Top directory exposed by the file browser when adding a workspace. Restricts navigation to this directory and its subdirectories. Useful when home directory is too broad (e.g. set to `D:\Projects` on Windows or `/data` on Linux). |
 
 ## Usage
 

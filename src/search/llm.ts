@@ -4,6 +4,7 @@ import { runtimeConfig } from '../config/runtime.js';
 export interface Citation {
   n: number;
   path: string;
+  absolutePath: string;
   score: number;
   snippet: string;
 }
@@ -316,6 +317,7 @@ export async function generateAnswer(
   const citations: Citation[] = chunks.map((c) => ({
     n: c.n,
     path: c.filePath,
+    absolutePath: c.absolutePath,
     score: c.score,
     snippet: c.snippet,
   }));

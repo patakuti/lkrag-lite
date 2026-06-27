@@ -6,8 +6,31 @@ const pdfParse = require('pdf-parse') as (buf: Buffer) => Promise<{ text: string
 
 export const extensions = ['.pdf'];
 
+const SUPPRESSED_WARNINGS = [
+  'Unknown/unsupported post table version',
+  'Ran out of space in font private use area',
+];
+
+function isSuppressed(args: unknown[]): boolean {
+  const msg = String(args[0] ?? '');
+  return SUPPRESSED_WARNINGS.some((w) => msg.includes(w));
+}
+
 export async function parse(filePath: string): Promise<string> {
   const buf = await fs.readFile(filePath);
-  const data = await pdfParse(buf);
-  return data.text;
+
+  // pdf-parse's bundled pdf.js emits warnings via console.log("Warning: ...")
+  // pdfjs-dist emits via console.warn("Warning: ..."); intercept both.
+  const originalLog = console.log;
+  const originalWarn = console.warn;
+  console.log = (...args: unknown[]) => { if (!isSuppressed(args)) originalLog.apply(console, args); };
+  console.warn = (...args: unknown[]) => { if (!isSuppressed(args)) originalWarn.apply(console, args); };
+
+  try {
+    const data = await pdfParse(buf);
+    return data.text;
+  } finally {
+    console.log = originalLog;
+    console.warn = originalWarn;
+  }
 }

@@ -9,6 +9,7 @@ export const extensions = ['.pdf'];
 const SUPPRESSED_WARNINGS = [
   'Unknown/unsupported post table version',
   'Ran out of space in font private use area',
+  'TT: undefined function:',
 ];
 
 function isSuppressed(args: unknown[]): boolean {

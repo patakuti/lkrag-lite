@@ -169,7 +169,8 @@ lkragl update-index --find-workspace
 # 0 3 * * * lkragl update-index --workspace-path /path/to/docs
 
 # Check index status
-lkragl status
+lkragl status --workspace-path /path/to/docs
+lkragl status --find-workspace
 ```
 
 ## Changing the Embedding Model

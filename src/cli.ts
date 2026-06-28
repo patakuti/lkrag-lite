@@ -3,21 +3,24 @@ import path from 'path';
 import fs from 'fs';
 import dotenv from 'dotenv';
 import { Command, InvalidArgumentError } from 'commander';
+import { getUserConfigDir, getUserDataDir } from './config/paths.js';
 import { initDb, listWorkspaces, addWorkspace, activateWorkspace, getIndexedFileCount, getLastIndexedAt, Workspace } from './db/sqlite.js';
 import { runUpdateForWorkspace, runRebuildForWorkspace, getStatus, requestCancel } from './indexer/index.js';
 import { retrieveForWorkspace, RetrievedChunk } from './search/retriever.js';
 
-// Load .env from the project root (dirname of this script's directory)
-// so lkragl works correctly regardless of the current working directory.
-const projectRoot = path.resolve(__dirname, '..');
-dotenv.config({ path: path.join(projectRoot, '.env'), quiet: true });
+// Load .env in cascade order (later calls override earlier):
+//   1. User config dir  (%APPDATA%\lkragl\.env  or  ~/.config/lkragl/.env)
+//   2. Current working directory (./.env)
+// --env-file <path> per-command is loaded with override:true and takes highest priority.
+dotenv.config({ path: path.join(getUserConfigDir(), '.env'), quiet: true });
+dotenv.config({ path: path.join(process.cwd(), '.env'), override: true, quiet: true });
 
 // ---------- DB init ----------
 
 function initDbFromEnv(): void {
   const dbPath = process.env.DATABASE_PATH
-    ? path.resolve(projectRoot, process.env.DATABASE_PATH)
-    : path.join(projectRoot, 'data', 'lkrag.db');
+    ? path.resolve(process.cwd(), process.env.DATABASE_PATH)
+    : path.join(getUserDataDir(), 'lkrag.db');
   initDb(dbPath);
 }
 

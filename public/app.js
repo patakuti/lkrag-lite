@@ -403,10 +403,14 @@ document.getElementById('btn-delete-all-chats').addEventListener('click', async 
 /** Each entry: { role: 'user'|'assistant', content: string } */
 let chatHistory = [];
 let turnCounter = 0;
+const turnData = new Map(); // tid → { userQuery, answer, citations }
+let pendingUserQuery = null;
 
 function clearChat() {
   chatHistory = [];
   turnCounter = 0;
+  turnData.clear();
+  pendingUserQuery = null;
   currentSessionId = null;
   currentSessionDeleted = false;
   document.getElementById('chat-thread').innerHTML = '';
@@ -469,6 +473,7 @@ document.getElementById('search-form').addEventListener('submit', async (e) => {
 });
 
 function appendUserBubble(text) {
+  pendingUserQuery = text;
   const thread = document.getElementById('chat-thread');
   const turn = document.createElement('div');
   turn.className = 'chat-turn';
@@ -492,6 +497,8 @@ function appendThinking() {
 
 function appendAIBubble({ answer, citations, rewriterFallback }) {
   const tid = ++turnCounter;
+  turnData.set(tid, { userQuery: pendingUserQuery, answer, citations });
+  pendingUserQuery = null;
   const thread = document.getElementById('chat-thread');
   const turn = document.createElement('div');
   turn.className = 'chat-turn';
@@ -507,6 +514,12 @@ function appendAIBubble({ answer, citations, rewriterFallback }) {
   bubble.className = 'chat-bubble-ai';
   bubble.innerHTML = renderMarkdownWithCitations(answer, citations, tid);
   turn.appendChild(bubble);
+
+  const copyBtn = document.createElement('button');
+  copyBtn.className = 'btn-copy-turn btn-link';
+  copyBtn.textContent = 'Copy';
+  copyBtn.addEventListener('click', () => copyToClipboard(turnToMarkdown(tid), copyBtn));
+  turn.appendChild(copyBtn);
 
   if (citations.length > 0) {
     const details = document.createElement('details');
@@ -583,6 +596,44 @@ async function openFile(path) {
     alert('Could not open file: ' + err.message);
   }
 }
+
+// ---------- Copy to Clipboard ----------
+
+function turnToMarkdown(tid) {
+  const data = turnData.get(tid);
+  if (!data) return '';
+  let md = `**You:** ${data.userQuery || ''}\n\n`;
+  md += `**Assistant:**\n${data.answer}`;
+  if (data.citations && data.citations.length > 0) {
+    md += '\n\n**References:**\n';
+    data.citations.forEach((c) => {
+      md += `- [${c.n}] ${c.path} (score: ${c.score})\n  > "${c.snippet}"\n`;
+    });
+  }
+  return md;
+}
+
+function allToMarkdown() {
+  const sorted = [...turnData.keys()].sort((a, b) => a - b);
+  return sorted.map((tid) => turnToMarkdown(tid)).join('\n\n---\n\n');
+}
+
+async function copyToClipboard(text, btn) {
+  try {
+    await navigator.clipboard.writeText(text);
+    const orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = orig; }, 1500);
+  } catch (_) {
+    alert('Failed to copy to clipboard.');
+  }
+}
+
+document.getElementById('btn-copy-all').addEventListener('click', (e) => {
+  const text = allToMarkdown();
+  if (!text) return;
+  copyToClipboard(text, e.currentTarget);
+});
 
 // ---------- Util ----------
 

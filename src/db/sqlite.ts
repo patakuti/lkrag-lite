@@ -31,13 +31,36 @@ export function getDb(): Database.Database {
   return _db;
 }
 
+// WAL mode requires fcntl() advisory locking on the -shm file, which is not
+// supported on WSL1 NTFS mounts (DrvFs). Fall back to DELETE journal mode when
+// WAL initialization fails. If the DB is already stuck in WAL mode and cannot
+// be recovered, instruct the user to delete the DB file and start fresh.
+function setupJournalMode(db: Database.Database, dbPath: string): void {
+  try {
+    const mode = db.pragma('journal_mode = WAL', { simple: true }) as string;
+    if (mode !== 'wal') {
+      // Filesystem does not support WAL (e.g., WSL1 on NTFS); continuing with
+      // current journal mode.
+    }
+  } catch {
+    try {
+      db.pragma('journal_mode = DELETE');
+    } catch {
+      throw new Error(
+        'The database is in WAL mode but WAL file locking is not supported on this filesystem.\n' +
+        `Delete the database file and try again: ${dbPath}`
+      );
+    }
+  }
+}
+
 export function initDb(dbPath: string): Database.Database {
   const dir = path.dirname(dbPath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
   const db = new Database(dbPath);
   loadSqliteVecExtension(db);
-  db.pragma('journal_mode = WAL');
+  setupJournalMode(db, dbPath);
   db.pragma('foreign_keys = ON');
 
   createSchema(db);

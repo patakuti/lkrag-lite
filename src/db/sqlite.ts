@@ -40,7 +40,18 @@ export function getDb(): Database.Database {
 // never attempt WAL at all.  A freshly created database already defaults to
 // DELETE journal mode, so no pragma is needed.
 function isNtfsDrvFs(dbPath: string): boolean {
-  return /^\/mnt\/[a-zA-Z]\//.test(path.resolve(dbPath));
+  let real: string;
+  try {
+    real = fs.realpathSync(dbPath);
+  } catch {
+    // File does not exist yet; resolve the parent directory instead.
+    try {
+      real = path.join(fs.realpathSync(path.dirname(dbPath)), path.basename(dbPath));
+    } catch {
+      real = path.resolve(dbPath);
+    }
+  }
+  return /^\/mnt\/[a-zA-Z]\//.test(real);
 }
 
 function openDb(dbPath: string): Database.Database {

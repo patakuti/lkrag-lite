@@ -61,7 +61,7 @@ Open http://localhost:3456 in your browser.
 
 | Variable | Default | Description |
 |---|---|---|
-| `DATABASE_PATH` | `./data/lkrag.db` | SQLite database file path |
+| `DATABASE_PATH` | Win: `%APPDATA%\lkragl\lkrag.db` / Linux・Mac: `~/.local/share/lkragl/lkrag.db` | SQLite database file path |
 | `RAG_INCLUDE_PATTERNS` | `**/*.md,...` | Glob patterns for files to index (comma-separated). To index PowerPoint files, add `**/*.pptx`. |
 | `RAG_EXCLUDE_PATTERNS` | `node_modules/**,.git/**` | Glob patterns to exclude |
 | `EMBEDDING_PROVIDER` | `openai` | `openai` / `litellm` / `ollama` |
@@ -112,6 +112,16 @@ A command-line interface for index management and search, suitable for cron jobs
 npm run build
 npm link   # makes lkragl available in PATH
 ```
+
+### Configuration
+
+`lkragl` loads `.env` files in the following order (later entries take priority):
+
+1. User config dir — `%APPDATA%\lkragl\.env` (Windows) / `~/.config/lkragl/.env` (Linux/Mac)
+2. Current working directory — `./.env`
+3. `--env-file <path>` — explicit path (highest priority)
+
+For the Windows binary, place your `.env` in `%APPDATA%\lkragl\` (e.g. `C:\Users\<you>\AppData\Roaming\lkragl\.env`).
 
 ### Commands
 

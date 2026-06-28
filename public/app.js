@@ -536,16 +536,11 @@ function appendAIBubble({ answer, citations, rewriterFallback }) {
           <span class="citation-n">[${c.n}]</span>
           <span class="citation-path">${esc(c.path)}</span>
           <span class="citation-score">score: ${c.score}</span>
-          <button class="btn-open btn-link" data-path="${esc(c.path)}">Open</button>
           <button class="btn-copy-path btn-link" data-path="${esc(c.absolutePath)}">Copy</button>
         </div>
         <div class="citation-snippet">"${esc(c.snippet)}"</div>
       </div>
     `).join('');
-
-    inner.querySelectorAll('.btn-open').forEach((btn) => {
-      btn.addEventListener('click', () => openFile(btn.dataset.path));
-    });
 
     inner.querySelectorAll('.btn-copy-path').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -589,14 +584,6 @@ function scrollChatToBottom() {
   thread.scrollTop = thread.scrollHeight;
 }
 
-async function openFile(path) {
-  try {
-    await api('GET', '/open?path=' + encodeURIComponent(path));
-  } catch (err) {
-    alert('Could not open file: ' + err.message);
-  }
-}
-
 // ---------- Copy to Clipboard ----------
 
 function turnToMarkdown(tid) {
@@ -607,7 +594,9 @@ function turnToMarkdown(tid) {
   if (data.citations && data.citations.length > 0) {
     md += '\n\n**References:**\n';
     data.citations.forEach((c) => {
-      md += `- [${c.n}] ${c.path} (score: ${c.score})\n  > "${c.snippet}"\n`;
+      const absPath = c.absolutePath.replace(/\\/g, '/');
+      const fileUrl = absPath.startsWith('/') ? `file://${absPath}` : `file:///${absPath}`;
+      md += `- [${c.n}] [${c.path}](${fileUrl}) (score: ${c.score})\n  > "${c.snippet}"\n`;
     });
   }
   return md;

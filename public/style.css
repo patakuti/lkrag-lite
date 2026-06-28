@@ -100,6 +100,8 @@ header h1 { font-size: 20px; }
   border-bottom: 1px solid #eee;
   flex-shrink: 0;
 }
+
+.chat-header-actions { display: flex; gap: 6px; }
 #chat-title { font-size: 13px; color: #888; }
 #chat-title.warn { color: #b45309; }
 
@@ -188,6 +190,16 @@ header h1 { font-size: 20px; }
 .citation-path { font-size: 11px; color: #444; word-break: break-all; flex: 1; }
 .citation-snippet { font-size: 11px; color: #666; margin-bottom: 4px; font-style: italic; }
 .btn-open { font-size: 11px; padding: 2px 8px; }
+
+/* Copy turn button */
+.btn-copy-turn {
+  align-self: flex-start;
+  font-size: 11px;
+  color: #bbb;
+  padding: 1px 4px;
+  margin-top: -2px;
+}
+.btn-copy-turn:hover { color: #1a73e8; background: none; }
 
 /* Thinking indicator */
 .chat-thinking {

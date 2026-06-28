@@ -31,20 +31,16 @@ export function getDb(): Database.Database {
   return _db;
 }
 
-// Windows filesystems accessed through WSL (/mnt/<drive>/) do not support the
-// fcntl() advisory locking that SQLite WAL mode requires on the -shm file.
-// Attempting pragma journal_mode = WAL on such paths raises SQLITE_PROTOCOL,
-// and the partial WAL initialisation it performs before failing leaves the DB
-// header in WAL mode — making even a DELETE fallback impossible on the same
-// connection.  The only safe strategy is to detect these paths upfront and
-// never attempt WAL at all.  A freshly created database already defaults to
-// DELETE journal mode, so no pragma is needed.
-function isNtfsDrvFs(dbPath: string): boolean {
+// Windows filesystems accessed through WSL (/mnt/<drive>/) do not support
+// POSIX fcntl() advisory locking.  SQLite requires this even in DELETE journal
+// mode, so any database placed on these paths will fail with SQLITE_IOERR or
+// SQLITE_CORRUPT at runtime.  Detect the path upfront and abort with a clear
+// message instead of letting obscure I/O errors surface later.
+function isWslDrvFs(dbPath: string): boolean {
   let real: string;
   try {
     real = fs.realpathSync(dbPath);
   } catch {
-    // File does not exist yet; resolve the parent directory instead.
     try {
       real = path.join(fs.realpathSync(path.dirname(dbPath)), path.basename(dbPath));
     } catch {
@@ -55,24 +51,16 @@ function isNtfsDrvFs(dbPath: string): boolean {
 }
 
 function openDb(dbPath: string): Database.Database {
-  const db = new Database(dbPath);
-  loadSqliteVecExtension(db);
-
-  if (isNtfsDrvFs(dbPath)) {
-    // WAL is not supported here.  A newly created DB is already in DELETE
-    // mode.  If the DB was previously created in WAL mode, it must be deleted
-    // and rebuilt — switching modes also requires WAL locking.
-    const mode = db.pragma('journal_mode', { simple: true }) as string;
-    if (mode === 'wal') {
-      try { db.close(); } catch { /* ignore */ }
-      throw new Error(
-        'The database is in WAL mode but WAL file locking is not supported on this filesystem.\n' +
-        `Delete the database file and try again: ${dbPath}`
-      );
-    }
-    return db;
+  if (isWslDrvFs(dbPath)) {
+    throw new Error(
+      `Database path is on a Windows filesystem mount: ${dbPath}\n` +
+      'SQLite does not support POSIX file locking on /mnt/<drive>/ paths in WSL.\n' +
+      'Set DATABASE_PATH to a Linux-native path, e.g. ~/.local/share/lkragl/lkrag.db'
+    );
   }
 
+  const db = new Database(dbPath);
+  loadSqliteVecExtension(db);
   db.pragma('journal_mode = WAL', { simple: true });
   return db;
 }

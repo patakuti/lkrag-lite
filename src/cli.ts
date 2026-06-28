@@ -24,6 +24,19 @@ function initDbFromEnv(): void {
   initDb(dbPath);
 }
 
+// ---------- pre-flight checks ----------
+
+function validateEmbeddingConfig(): void {
+  const provider = process.env.EMBEDDING_PROVIDER ?? 'openai';
+  if (provider === 'openai' && !process.env.OPENAI_API_KEY) {
+    process.stderr.write(
+      'Error: OPENAI_API_KEY is not set.\n' +
+      `Set it in ${path.join(getUserConfigDir(), '.env')} or in .env in the current directory.\n`,
+    );
+    process.exit(1);
+  }
+}
+
 // ---------- workspace resolution ----------
 
 function findWorkspaceByPath(wsPath: string): Workspace | null {
@@ -153,6 +166,7 @@ sharedOptions(
     .option('--format <fmt>', 'output format: plain, tsv, json', 'plain')
 ).action(async (query: string, opts) => {
   if (opts.envFile) loadEnvFile(opts.envFile);
+  validateEmbeddingConfig();
   initDbFromEnv();
   const ws = resolveWorkspace(opts, 'require');
   if (!opts.quiet) process.stderr.write(`Searching workspace "${ws.name}" (${ws.path})...\n`);
@@ -179,6 +193,7 @@ sharedOptions(
     .description('incrementally update the index')
 ).action(async (opts) => {
   if (opts.envFile) loadEnvFile(opts.envFile);
+  validateEmbeddingConfig();
   initDbFromEnv();
   const ws = resolveWorkspace(opts, 'require');
   if (!opts.quiet) process.stderr.write(`Updating index for workspace "${ws.name}" (${ws.path})...\n`);
@@ -211,6 +226,7 @@ sharedOptions(
     .description('rebuild the entire index from scratch')
 ).action(async (opts) => {
   if (opts.envFile) loadEnvFile(opts.envFile);
+  validateEmbeddingConfig();
   initDbFromEnv();
   const ws = resolveWorkspace(opts, 'auto-register');
   if (!opts.quiet) process.stderr.write(`Rebuilding index for workspace "${ws.name}" (${ws.path})...\n`);

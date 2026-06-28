@@ -36,7 +36,8 @@
       "node_modules/sqlite-vec-linux-x64/vec0.so",
       "node_modules/sqlite-vec-windows-x64/vec0.dll",
       "node_modules/sqlite-vec-darwin-arm64/vec0.dylib",
-      "node_modules/sqlite-vec-darwin-x64/vec0.dylib"
+      "node_modules/sqlite-vec-darwin-x64/vec0.dylib",
+      "node_modules/pdf-parse/lib/pdf.js/**"
     ],
     "fallbackToSource": true,
     "outputPath": "pkg-dist"

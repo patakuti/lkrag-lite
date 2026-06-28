@@ -1,6 +1,7 @@
 import path from 'path';
 import express from 'express';
 import dotenv from 'dotenv';
+import { getUserConfigDir, getUserDataDir } from './config/paths.js';
 import { initDb } from './db/sqlite.js';
 import workspacesRouter from './routes/workspaces.js';
 import indexRouter from './routes/index_route.js';
@@ -10,11 +11,15 @@ import openRouter from './routes/open.js';
 import browseRouter from './routes/browse.js';
 import chatsRouter from './routes/chats.js';
 
-dotenv.config();
+// Load .env in cascade order (later calls override earlier):
+//   1. User config dir  (%APPDATA%\lkragl\.env  or  ~/.config/lkragl/.env)
+//   2. Current working directory (./.env)
+dotenv.config({ path: path.join(getUserConfigDir(), '.env'), quiet: true });
+dotenv.config({ path: path.join(process.cwd(), '.env'), override: true, quiet: true });
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3456;
-const DB_PATH = process.env.DATABASE_PATH ?? './data/lkrag.db';
+const DB_PATH = process.env.DATABASE_PATH ?? path.join(getUserDataDir(), 'lkrag.db');
 
 initDb(DB_PATH);
 

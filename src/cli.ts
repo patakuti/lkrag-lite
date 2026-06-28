@@ -3,22 +3,38 @@ import path from 'path';
 import fs from 'fs';
 import dotenv from 'dotenv';
 import { Command, InvalidArgumentError } from 'commander';
+import { getUserConfigDir, getUserDataDir } from './config/paths.js';
 import { initDb, listWorkspaces, addWorkspace, activateWorkspace, getIndexedFileCount, getLastIndexedAt, Workspace } from './db/sqlite.js';
 import { runUpdateForWorkspace, runRebuildForWorkspace, getStatus, requestCancel } from './indexer/index.js';
 import { retrieveForWorkspace, RetrievedChunk } from './search/retriever.js';
 
-// Load .env from the project root (dirname of this script's directory)
-// so lkragl works correctly regardless of the current working directory.
-const projectRoot = path.resolve(__dirname, '..');
-dotenv.config({ path: path.join(projectRoot, '.env'), quiet: true });
+// Load .env in cascade order (later calls override earlier):
+//   1. User config dir  (%APPDATA%\lkragl\.env  or  ~/.config/lkragl/.env)
+//   2. Current working directory (./.env)
+// --env-file <path> per-command is loaded with override:true and takes highest priority.
+dotenv.config({ path: path.join(getUserConfigDir(), '.env'), quiet: true });
+dotenv.config({ path: path.join(process.cwd(), '.env'), override: true, quiet: true });
 
 // ---------- DB init ----------
 
 function initDbFromEnv(): void {
   const dbPath = process.env.DATABASE_PATH
-    ? path.resolve(projectRoot, process.env.DATABASE_PATH)
-    : path.join(projectRoot, 'data', 'lkrag.db');
+    ? path.resolve(process.cwd(), process.env.DATABASE_PATH)
+    : path.join(getUserDataDir(), 'lkrag.db');
   initDb(dbPath);
+}
+
+// ---------- pre-flight checks ----------
+
+function validateEmbeddingConfig(): void {
+  const provider = process.env.EMBEDDING_PROVIDER ?? 'openai';
+  if (provider === 'openai' && !process.env.OPENAI_API_KEY) {
+    process.stderr.write(
+      'Error: OPENAI_API_KEY is not set.\n' +
+      `Set it in ${path.join(getUserConfigDir(), '.env')} or in .env in the current directory.\n`,
+    );
+    process.exit(1);
+  }
 }
 
 // ---------- workspace resolution ----------
@@ -150,6 +166,7 @@ sharedOptions(
     .option('--format <fmt>', 'output format: plain, tsv, json', 'plain')
 ).action(async (query: string, opts) => {
   if (opts.envFile) loadEnvFile(opts.envFile);
+  validateEmbeddingConfig();
   initDbFromEnv();
   const ws = resolveWorkspace(opts, 'require');
   if (!opts.quiet) process.stderr.write(`Searching workspace "${ws.name}" (${ws.path})...\n`);
@@ -176,6 +193,7 @@ sharedOptions(
     .description('incrementally update the index')
 ).action(async (opts) => {
   if (opts.envFile) loadEnvFile(opts.envFile);
+  validateEmbeddingConfig();
   initDbFromEnv();
   const ws = resolveWorkspace(opts, 'require');
   if (!opts.quiet) process.stderr.write(`Updating index for workspace "${ws.name}" (${ws.path})...\n`);
@@ -208,6 +226,7 @@ sharedOptions(
     .description('rebuild the entire index from scratch')
 ).action(async (opts) => {
   if (opts.envFile) loadEnvFile(opts.envFile);
+  validateEmbeddingConfig();
   initDbFromEnv();
   const ws = resolveWorkspace(opts, 'auto-register');
   if (!opts.quiet) process.stderr.write(`Rebuilding index for workspace "${ws.name}" (${ws.path})...\n`);

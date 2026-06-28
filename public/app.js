@@ -160,7 +160,7 @@ async function navigateTo(dirPath) {
     const data = await api('GET', '/browse' + (dirPath ? '?path=' + encodeURIComponent(dirPath) : ''));
     renderDirList(data);
     document.getElementById('modal-path-input').value = data.current;
-    const nameParts = data.current.split('/');
+    const nameParts = data.current.split(/[\\/]/);
     const dirName = nameParts[nameParts.length - 1] || nameParts[nameParts.length - 2] || '';
     document.getElementById('modal-name-input').value = dirName;
   } catch (err) {

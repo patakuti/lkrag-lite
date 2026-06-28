@@ -33,8 +33,16 @@ jobs:
       - name: Build TypeScript
         run: npm run build
 
+      - name: Cache pkg binaries
+        uses: actions/cache@v4
+        with:
+          path: ~/.pkg-cache
+          key: pkg-${{ matrix.target }}
+
       - name: Build standalone binary
-        run: npx pkg dist/cli.js --config package.json --target ${{ matrix.target }} --output pkg-dist/${{ matrix.artifact }}
+        run: npx pkg dist/cli.js --config package.json --target ${{ matrix.target }} --output pkg-dist/${{ matrix.artifact }} --no-bytecode
+        env:
+          PKG_CACHE_PATH: ~/.pkg-cache
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

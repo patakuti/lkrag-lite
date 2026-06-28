@@ -142,8 +142,10 @@ lkragl status               Show index status
 |---------|-------------------|-------------------------------|
 | `search` | Error | Error |
 | `update-index` | Error | Error |
-| `rebuild-index` | **Auto-register** and index | Error |
+| `rebuild-index` | **Auto-register**, index, and **activate** | Error |
 | `status` | Error | Error |
+
+`rebuild-index` activates the workspace upon completion so it is immediately usable from the Web UI. `update-index` does not change the active workspace (safe for cron jobs).
 
 ### Examples
 

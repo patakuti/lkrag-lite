@@ -31,36 +31,57 @@ export function getDb(): Database.Database {
   return _db;
 }
 
-// WAL mode requires fcntl() advisory locking on the -shm file, which is not
-// supported on WSL1 NTFS mounts (DrvFs). Fall back to DELETE journal mode when
-// WAL initialization fails. If the DB is already stuck in WAL mode and cannot
-// be recovered, instruct the user to delete the DB file and start fresh.
-function setupJournalMode(db: Database.Database, dbPath: string): void {
+// Windows filesystems accessed through WSL (/mnt/<drive>/) do not support the
+// fcntl() advisory locking that SQLite WAL mode requires on the -shm file.
+// Attempting pragma journal_mode = WAL on such paths raises SQLITE_PROTOCOL,
+// and the partial WAL initialisation it performs before failing leaves the DB
+// header in WAL mode — making even a DELETE fallback impossible on the same
+// connection.  The only safe strategy is to detect these paths upfront and
+// never attempt WAL at all.  A freshly created database already defaults to
+// DELETE journal mode, so no pragma is needed.
+function isNtfsDrvFs(dbPath: string): boolean {
+  let real: string;
   try {
-    const mode = db.pragma('journal_mode = WAL', { simple: true }) as string;
-    if (mode !== 'wal') {
-      // Filesystem does not support WAL (e.g., WSL1 on NTFS); continuing with
-      // current journal mode.
-    }
+    real = fs.realpathSync(dbPath);
   } catch {
+    // File does not exist yet; resolve the parent directory instead.
     try {
-      db.pragma('journal_mode = DELETE');
+      real = path.join(fs.realpathSync(path.dirname(dbPath)), path.basename(dbPath));
     } catch {
+      real = path.resolve(dbPath);
+    }
+  }
+  return /^\/mnt\/[a-zA-Z]\//.test(real);
+}
+
+function openDb(dbPath: string): Database.Database {
+  const db = new Database(dbPath);
+  loadSqliteVecExtension(db);
+
+  if (isNtfsDrvFs(dbPath)) {
+    // WAL is not supported here.  A newly created DB is already in DELETE
+    // mode.  If the DB was previously created in WAL mode, it must be deleted
+    // and rebuilt — switching modes also requires WAL locking.
+    const mode = db.pragma('journal_mode', { simple: true }) as string;
+    if (mode === 'wal') {
+      try { db.close(); } catch { /* ignore */ }
       throw new Error(
         'The database is in WAL mode but WAL file locking is not supported on this filesystem.\n' +
         `Delete the database file and try again: ${dbPath}`
       );
     }
+    return db;
   }
+
+  db.pragma('journal_mode = WAL', { simple: true });
+  return db;
 }
 
 export function initDb(dbPath: string): Database.Database {
   const dir = path.dirname(dbPath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
-  const db = new Database(dbPath);
-  loadSqliteVecExtension(db);
-  setupJournalMode(db, dbPath);
+  const db = openDb(dbPath);
   db.pragma('foreign_keys = ON');
 
   createSchema(db);

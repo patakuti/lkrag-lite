@@ -536,11 +536,16 @@ function appendAIBubble({ answer, citations, rewriterFallback }) {
           <span class="citation-n">[${c.n}]</span>
           <span class="citation-path">${esc(c.path)}</span>
           <span class="citation-score">score: ${c.score}</span>
+          <button class="btn-open btn-link" data-path="${esc(c.path)}">Open</button>
           <button class="btn-copy-path btn-link" data-path="${esc(c.absolutePath)}">Copy</button>
         </div>
         <div class="citation-snippet">"${esc(c.snippet)}"</div>
       </div>
     `).join('');
+
+    inner.querySelectorAll('.btn-open').forEach((btn) => {
+      btn.addEventListener('click', () => openFile(btn.dataset.path));
+    });
 
     inner.querySelectorAll('.btn-copy-path').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -582,6 +587,14 @@ function renderMarkdownWithCitations(answer, citations, tid) {
 function scrollChatToBottom() {
   const thread = document.getElementById('chat-thread');
   thread.scrollTop = thread.scrollHeight;
+}
+
+async function openFile(path) {
+  try {
+    await api('GET', '/open?path=' + encodeURIComponent(path));
+  } catch (err) {
+    alert('Could not open file: ' + err.message);
+  }
 }
 
 // ---------- Copy to Clipboard ----------

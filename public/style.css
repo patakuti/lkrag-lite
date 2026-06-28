@@ -189,6 +189,7 @@ header h1 { font-size: 20px; }
 .citation-score { font-size: 11px; color: #888; }
 .citation-path { font-size: 11px; color: #444; word-break: break-all; flex: 1; }
 .citation-snippet { font-size: 11px; color: #666; margin-bottom: 4px; font-style: italic; }
+.btn-open { font-size: 11px; padding: 2px 8px; }
 
 /* Copy turn button */
 .btn-copy-turn {

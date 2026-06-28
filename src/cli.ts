@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import dotenv from 'dotenv';
 import { Command, InvalidArgumentError } from 'commander';
-import { initDb, listWorkspaces, addWorkspace, getIndexedFileCount, getLastIndexedAt, Workspace } from './db/sqlite.js';
+import { initDb, listWorkspaces, addWorkspace, activateWorkspace, getIndexedFileCount, getLastIndexedAt, Workspace } from './db/sqlite.js';
 import { runUpdateForWorkspace, runRebuildForWorkspace, getStatus, requestCancel } from './indexer/index.js';
 import { retrieveForWorkspace, RetrievedChunk } from './search/retriever.js';
 
@@ -228,8 +228,9 @@ sharedOptions(
     process.stderr.write(`Error: ${s.error}\n`);
     process.exit(1);
   }
+  activateWorkspace(ws.id);
   const cancelled = s.cancelRequested ? ' (cancelled)' : '';
-  if (!opts.quiet) process.stderr.write(`Done. Processed ${s.processed} / ${s.total} files${cancelled}.\n`);
+  if (!opts.quiet) process.stderr.write(`Done. Processed ${s.processed} / ${s.total} files${cancelled}. Workspace activated.\n`);
 });
 
 // ---------- status ----------

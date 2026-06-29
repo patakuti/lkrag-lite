@@ -31,6 +31,26 @@ export function getDb(): Database.Database {
   return _db;
 }
 
+// WSL1 does not implement mmap() or fcntl() advisory locking correctly for
+// SQLite's WAL shared-memory file (.db-shm).  Attempting WAL mode on WSL1
+// raises SQLITE_PROTOCOL ("locking protocol").  Fall back to DELETE journal
+// mode automatically when WSL1 is detected.
+function isWsl1(): boolean {
+  try {
+    const release = fs.readFileSync('/proc/sys/kernel/osrelease', 'utf8').trim().toLowerCase();
+    return release.includes('microsoft') && !release.includes('wsl2');
+  } catch {
+    return false;
+  }
+}
+
+// Choose journal mode: env var takes priority, then WSL1 auto-detection, then WAL.
+function resolveJournalMode(): string {
+  const env = process.env.SQLITE_JOURNAL_MODE;
+  if (env) return env.toLowerCase();
+  return isWsl1() ? 'delete' : 'wal';
+}
+
 // Windows filesystems accessed through WSL (/mnt/<drive>/) do not support
 // POSIX fcntl() advisory locking.  SQLite requires this even in DELETE journal
 // mode, so any database placed on these paths will fail with SQLITE_IOERR or
@@ -61,7 +81,7 @@ function openDb(dbPath: string): Database.Database {
 
   const db = new Database(dbPath);
   loadSqliteVecExtension(db);
-  db.pragma('journal_mode = WAL', { simple: true });
+  db.pragma(`journal_mode = ${resolveJournalMode()}`, { simple: true });
   return db;
 }
 

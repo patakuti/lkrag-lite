@@ -11,7 +11,8 @@
     "build": "tsc && node -e \"require('fs').copyFileSync('node_modules/marked/lib/marked.umd.js','public/marked.min.js')\"",
     "start": "node dist/server.js",
     "dev": "tsx watch src/server.ts",
-    "pkg:build": "pkg dist/cli.js --config package.json --out-path pkg-dist"
+    "pkg:build": "pkg dist/cli.js --config package.json --out-path pkg-dist",
+    "test": "vitest run"
   },
   "dependencies": {
     "better-sqlite3": "^12.11.1",
@@ -49,6 +50,7 @@
     "@types/pdf-parse": "^1.1.5",
     "@yao-pkg/pkg": "^6.20.0",
     "tsx": "^4.22.4",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9"
   }
 }

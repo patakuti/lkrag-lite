@@ -162,7 +162,12 @@ async function indexWorkspace(workspaceId: number, wsPath: string, rebuild: bool
         process.stderr.write(`[indexer] skipped (file removed): ${absPath}\n`);
       } else {
         const msg = err instanceof Error ? err.message : String(err);
-        process.stderr.write(`[indexer] skipped (parse error): ${relPath}: ${msg}\n`);
+        const isDbError = /disk i\/o error|database is locked|sqlite_busy|sqlite_ioerr/i.test(msg);
+        if (isDbError) {
+          process.stderr.write(`[indexer] skipped (db error): ${relPath}: ${msg}\n`);
+        } else {
+          process.stderr.write(`[indexer] skipped (parse error): ${relPath}: ${msg}\n`);
+        }
       }
     }
 

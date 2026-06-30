@@ -90,6 +90,7 @@ export function initDb(dbPath: string): Database.Database {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
   const db = openDb(dbPath);
+  db.pragma('busy_timeout = 5000');
   db.pragma('foreign_keys = ON');
 
   createSchema(db);

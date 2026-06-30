@@ -92,6 +92,8 @@ export function initDb(dbPath: string): Database.Database {
   const db = openDb(dbPath);
   db.pragma('busy_timeout = 5000');
   db.pragma('foreign_keys = ON');
+  db.pragma('cache_size = -65536');    // 64 MB page cache
+  db.pragma('mmap_size = 536870912'); // 512 MB mmap
 
   createSchema(db);
   syncFtsTable(db);
@@ -315,15 +317,9 @@ export function listFileIds(workspaceId: number): { id: number; path: string }[]
 
 export function deleteFile(fileId: number): void {
   const db = getDb();
-  const chunkIds = (
-    db.prepare('SELECT id FROM chunks WHERE file_id = ?').all(fileId) as { id: number }[]
-  ).map((r) => r.id);
-
   const del = db.transaction(() => {
-    for (const cid of chunkIds) {
-      db.prepare('DELETE FROM vec_chunks WHERE rowid = ?').run(cid);
-      db.prepare('DELETE FROM fts_chunks WHERE rowid = ?').run(cid);
-    }
+    db.prepare('DELETE FROM vec_chunks WHERE rowid IN (SELECT id FROM chunks WHERE file_id = ?)').run(fileId);
+    db.prepare('DELETE FROM fts_chunks WHERE rowid IN (SELECT id FROM chunks WHERE file_id = ?)').run(fileId);
     db.prepare('DELETE FROM files WHERE id = ?').run(fileId);
   });
   del();
@@ -342,15 +338,9 @@ export interface ChunkRecord {
 
 export function deleteChunksByFile(fileId: number): void {
   const db = getDb();
-  const chunkIds = (
-    db.prepare('SELECT id FROM chunks WHERE file_id = ?').all(fileId) as { id: number }[]
-  ).map((r) => r.id);
-
   const del = db.transaction(() => {
-    for (const cid of chunkIds) {
-      db.prepare('DELETE FROM vec_chunks WHERE rowid = ?').run(cid);
-      db.prepare('DELETE FROM fts_chunks WHERE rowid = ?').run(cid);
-    }
+    db.prepare('DELETE FROM vec_chunks WHERE rowid IN (SELECT id FROM chunks WHERE file_id = ?)').run(fileId);
+    db.prepare('DELETE FROM fts_chunks WHERE rowid IN (SELECT id FROM chunks WHERE file_id = ?)').run(fileId);
     db.prepare('DELETE FROM chunks WHERE file_id = ?').run(fileId);
   });
   del();
@@ -542,20 +532,17 @@ export function deleteAllChatSessions(): void {
 
 export function clearWorkspaceIndex(workspaceId: number): void {
   const db = getDb();
-  const fileIds = (
-    db.prepare('SELECT id FROM files WHERE workspace_id = ?').all(workspaceId) as { id: number }[]
-  ).map((r) => r.id);
-
   const clear = db.transaction(() => {
-    for (const fid of fileIds) {
-      const chunkIds = (
-        db.prepare('SELECT id FROM chunks WHERE file_id = ?').all(fid) as { id: number }[]
-      ).map((r) => r.id);
-      for (const cid of chunkIds) {
-        db.prepare('DELETE FROM vec_chunks WHERE rowid = ?').run(cid);
-        db.prepare('DELETE FROM fts_chunks WHERE rowid = ?').run(cid);
-      }
-    }
+    db.prepare(`
+      DELETE FROM vec_chunks WHERE rowid IN (
+        SELECT c.id FROM chunks c JOIN files f ON c.file_id = f.id WHERE f.workspace_id = ?
+      )
+    `).run(workspaceId);
+    db.prepare(`
+      DELETE FROM fts_chunks WHERE rowid IN (
+        SELECT c.id FROM chunks c JOIN files f ON c.file_id = f.id WHERE f.workspace_id = ?
+      )
+    `).run(workspaceId);
     db.prepare('DELETE FROM files WHERE workspace_id = ?').run(workspaceId);
   });
   clear();

@@ -1,6 +1,7 @@
 import os from 'os';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import Database from 'better-sqlite3';
 import * as sqliteVec from 'sqlite-vec';
 
@@ -166,6 +167,30 @@ function createSchema(db: Database.Database): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_messages_session ON chat_messages(session_id);
+
+    CREATE TABLE IF NOT EXISTS public_tokens (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      token_hash    TEXT    NOT NULL UNIQUE,
+      workspace_id  INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      label         TEXT    NOT NULL,
+      enabled       INTEGER NOT NULL DEFAULT 1,
+      created_at    TEXT    NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_public_tokens_workspace ON public_tokens(workspace_id);
+
+    CREATE TABLE IF NOT EXISTS public_access_log (
+      id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+      token_id           INTEGER REFERENCES public_tokens(id) ON DELETE SET NULL,
+      workspace_id       INTEGER,
+      query              TEXT    NOT NULL,
+      prompt_tokens      INTEGER,
+      completion_tokens  INTEGER,
+      estimated_cost_usd REAL,
+      created_at         TEXT    NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_public_access_log_token ON public_access_log(token_id);
   `);
 }
 
@@ -546,4 +571,70 @@ export function clearWorkspaceIndex(workspaceId: number): void {
     db.prepare('DELETE FROM files WHERE workspace_id = ?').run(workspaceId);
   });
   clear();
+}
+
+// ---------- public tokens ----------
+
+export interface PublicToken {
+  id: number;
+  workspace_id: number;
+  label: string;
+  enabled: number;
+  created_at: string;
+}
+
+export interface PublicTokenWithWorkspace extends PublicToken {
+  workspace_name: string | null;
+}
+
+function hashPublicToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+export function createPublicToken(workspaceId: number, label: string): { token: string; record: PublicToken } {
+  const db = getDb();
+  const token = crypto.randomBytes(24).toString('base64url');
+  const now = new Date().toISOString();
+  const info = db.prepare(
+    'INSERT INTO public_tokens (token_hash, workspace_id, label, enabled, created_at) VALUES (?, ?, ?, 1, ?)'
+  ).run(hashPublicToken(token), workspaceId, label, now);
+  const record = db.prepare('SELECT * FROM public_tokens WHERE id = ?').get(info.lastInsertRowid) as PublicToken;
+  return { token, record };
+}
+
+export function listPublicTokens(): PublicTokenWithWorkspace[] {
+  return getDb().prepare(`
+    SELECT t.*, w.name AS workspace_name
+    FROM public_tokens t
+    LEFT JOIN workspaces w ON w.id = t.workspace_id
+    ORDER BY t.id
+  `).all() as PublicTokenWithWorkspace[];
+}
+
+export function revokePublicToken(id: number): void {
+  getDb().prepare('UPDATE public_tokens SET enabled = 0 WHERE id = ?').run(id);
+}
+
+/** Looks up an enabled token by its plaintext value (hashes internally before querying). */
+export function findPublicTokenByToken(token: string): PublicToken | null {
+  const row = getDb()
+    .prepare('SELECT * FROM public_tokens WHERE token_hash = ? AND enabled = 1')
+    .get(hashPublicToken(token)) as PublicToken | undefined;
+  return row ?? null;
+}
+
+// ---------- public access log ----------
+
+export function insertPublicAccessLog(
+  tokenId: number | null,
+  workspaceId: number | null,
+  query: string,
+  promptTokens: number | null,
+  completionTokens: number | null,
+  estimatedCostUsd: number | null
+): void {
+  const now = new Date().toISOString();
+  getDb().prepare(
+    'INSERT INTO public_access_log (token_id, workspace_id, query, prompt_tokens, completion_tokens, estimated_cost_usd, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).run(tokenId, workspaceId, query, promptTokens, completionTokens, estimatedCostUsd, now);
 }

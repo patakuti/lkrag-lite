@@ -71,9 +71,13 @@ Open http://localhost:3456 in your browser.
 | `OPENAI_API_KEY` | — | OpenAI API key (also used for litellm bearer token) |
 | `OPENAI_COMPATIBLE_BASE_URL` | — | Base URL for LiteLLM (`http://localhost:4000/v1`) |
 | `OLLAMA_BASE_URL` | — | Base URL for Ollama (`http://localhost:11434/v1`) |
+| `EMBEDDING_QUERY_PREFIX` | _(empty)_ | Prefix prepended to query text before embedding (some models require e.g. `"query: "`) |
+| `EMBEDDING_DOCUMENT_PREFIX` | _(empty)_ | Prefix prepended to document text before embedding (some models require e.g. `"passage: "`) |
+| `EMBEDDING_BATCH_SIZE` | `500` | Number of texts embedded per API call |
 | `LLM_PROVIDER` | `openai` | `openai` / `anthropic` / `openai-compatible` |
 | `LLM_MODEL` | `gpt-4o-mini` | LLM model name |
 | `ANTHROPIC_API_KEY` | — | Anthropic API key |
+| `RAG_MAX_FILE_SIZE` | `10485760` (10MB) | Maximum file size in bytes to index; larger files are skipped |
 | `RAG_CHUNK_SIZE` | `1000` | Chunk size in characters |
 | `RAG_CHUNK_OVERLAP` | `200` | Overlap between consecutive chunks |
 | `RAG_TOP_K` | `5` | Number of chunks to retrieve (overridable from UI) |

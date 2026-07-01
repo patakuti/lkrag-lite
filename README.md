@@ -82,6 +82,7 @@ Open http://localhost:3456 in your browser.
 | `QUERY_REWRITER_MODEL` | `gpt-4o-mini` (openai) / `claude-haiku-4-5` (anthropic) | Model used by the query rewriter. Reuses `OPENAI_API_KEY` / `OPENAI_COMPATIBLE_BASE_URL` for OpenAI variants, and `ANTHROPIC_API_KEY` for Anthropic. |
 | `PORT` | `3456` | HTTP server port |
 | `BROWSE_ROOT` | _(user home)_ | Top directory exposed by the file browser when adding a workspace. Restricts navigation to this directory and its subdirectories. Useful when home directory is too broad (e.g. set to `D:\Projects` on Windows or `/data` on Linux). |
+| `PUBLIC_PORT` | _(unset)_ | If set, starts a separate, network-reachable (`0.0.0.0`) read-only chat server on this port, gated by tokens issued with `lkragl token create`. Unset by default (feature disabled). See "Public Chat" below. |
 
 ## Usage
 
@@ -186,6 +187,20 @@ lkragl update-index --find-workspace
 lkragl status --workspace-path /path/to/docs
 lkragl status --find-workspace
 ```
+
+## Public Chat (work in progress)
+
+A read-only, token-authenticated chat surface for sharing a single workspace with other people, served on a separate port from the admin UI so the workspace-management API is never network-reachable. Set `PUBLIC_PORT` in `.env` to enable it.
+
+Tokens are managed with `lkragl`:
+
+```bash
+lkragl token create --workspace-path /path/to/docs --name alice   # prints the token once; store it securely
+lkragl token list                                                 # label, workspace, enabled/revoked
+lkragl token revoke <id>                                          # disable a token
+```
+
+Deleting a workspace revokes all of its tokens. The chat UI and citation file endpoints are still being implemented (currently only a token-gated `/api/ping` connectivity check is available on `PUBLIC_PORT`); this section will be expanded as those land.
 
 ## Changing the Embedding Model
 

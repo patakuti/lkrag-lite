@@ -507,6 +507,12 @@ export function listChatSessions(): ChatSessionWithWorkspace[] {
   `).all() as ChatSessionWithWorkspace[];
 }
 
+export function listChatSessionsForWorkspace(workspaceId: number): ChatSession[] {
+  return getDb()
+    .prepare('SELECT * FROM chat_sessions WHERE workspace_id = ? ORDER BY updated_at DESC')
+    .all(workspaceId) as ChatSession[];
+}
+
 export function createChatSession(id: string, workspaceId: number | null, title: string): ChatSession {
   const now = Date.now();
   getDb().prepare(

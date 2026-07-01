@@ -200,7 +200,17 @@ lkragl token list                                                 # label, works
 lkragl token revoke <id>                                          # disable a token
 ```
 
-Deleting a workspace revokes all of its tokens. The chat UI and citation file endpoints are still being implemented (currently only a token-gated `/api/ping` connectivity check is available on `PUBLIC_PORT`); this section will be expanded as those land.
+Deleting a workspace revokes all of its tokens.
+
+Open `http://<host>:<PUBLIC_PORT>/api/chat` with a valid `?token=` to start chatting (a dedicated frontend UI is still being built — see below). The API:
+
+- `POST /api/chat` — `{ query, history?, session_id? }` → `{ session_id, answer, citations, rewriterFallback }`. Omit `session_id` on the first call; a session is created automatically and its id returned for follow-up turns.
+- `GET /api/chats` / `GET /api/chats/:id` — list/resume past chats, scoped to the token's workspace only.
+- `GET /api/file?path=...` — view a citation's source file in the browser; add `&download=1` to download it instead. Paths are restricted to the token's workspace.
+
+Every `POST /api/chat` call is recorded in an access log (token, query, prompt/completion token counts). Set `LLM_PRICE_INPUT_PER_1M` / `LLM_PRICE_OUTPUT_PER_1M` in `.env` to also record an estimated USD cost per request; otherwise only token counts are recorded.
+
+The dedicated read-only frontend (`public-chat/`) is not built yet — this section will be updated once it lands.
 
 ## Changing the Embedding Model
 

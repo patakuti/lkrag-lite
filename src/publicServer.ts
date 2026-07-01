@@ -1,5 +1,7 @@
 import express, { Express } from 'express';
 import { publicAuth } from './middleware/publicAuth.js';
+import publicChatRouter from './routes/publicChat.js';
+import publicFileRouter from './routes/publicFile.js';
 
 // Separate Express app for the public read-only workspace chat (§11, D23).
 // Deliberately has no Host-header/DNS-rebinding guard (D24): unlike the admin
@@ -10,11 +12,8 @@ export function createPublicApp(): Express {
   app.use(express.json());
   app.use(publicAuth);
 
-  // Temporary connectivity-check route for Phase 10. Replaced by the real
-  // chat/file routes in Phase 11.
-  app.get('/api/ping', (req, res) => {
-    res.json({ ok: true, workspace: req.publicAuth });
-  });
+  app.use('/api', publicChatRouter);
+  app.use('/api', publicFileRouter);
 
   return app;
 }

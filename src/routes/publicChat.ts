@@ -9,6 +9,7 @@ import {
   getChatSession,
   insertPublicAccessLog,
   listChatSessionsForWorkspace,
+  listWorkspaces,
 } from '../db/sqlite.js';
 import { runtimeConfig } from '../config/runtime.js';
 
@@ -33,6 +34,13 @@ function estimateCostUsd(promptTokens: number | null, completionTokens: number |
   }
   return (promptTokens / 1_000_000) * inputPrice + (completionTokens / 1_000_000) * outputPrice;
 }
+
+// GET /whoami — token label + workspace name, for the chat UI header
+router.get('/whoami', (req, res) => {
+  const { workspaceId, label } = req.publicAuth!;
+  const ws = listWorkspaces().find((w) => w.id === workspaceId);
+  res.json({ label, workspaceName: ws?.name ?? null });
+});
 
 // GET /chats — sessions belonging to this token's workspace only
 router.get('/chats', (req, res) => {

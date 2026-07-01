@@ -1,3 +1,4 @@
+import path from 'path';
 import express, { Express } from 'express';
 import { publicAuth } from './middleware/publicAuth.js';
 import publicChatRouter from './routes/publicChat.js';
@@ -14,6 +15,9 @@ export function createPublicApp(): Express {
 
   app.use('/api', publicChatRouter);
   app.use('/api', publicFileRouter);
+
+  // Minimal chat-only frontend (D31), separate from the admin public/ UI.
+  app.use(express.static(path.join(__dirname, '..', 'public-chat')));
 
   return app;
 }

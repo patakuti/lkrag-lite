@@ -9,6 +9,7 @@ node_modules/
 dist/
 pkg-dist/
 public/marked.min.js
+public-chat/marked.min.js
 
 # Runtime data and secrets
 data/

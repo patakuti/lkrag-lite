@@ -37,6 +37,7 @@ Most RAG tools treat your documents as data to be *imported* into a proprietary 
 - **Query rewriter**: LLM automatically rewrites follow-up questions into clean, standalone RAG search queries
 - **Chat history**: chats are auto-saved to SQLite and can be resumed at any time; history is shown across all workspaces
 - **CLI tool** (`lkragl`): command-line interface for search and index management, suitable for cron jobs, editor integrations, and automation
+- **Public chat**: token-authenticated, read-only chat UI for sharing a single workspace with other people, served on a separate network-reachable port (see [Public Chat](#public-chat))
 
 ## Requirements
 
@@ -188,9 +189,9 @@ lkragl status --workspace-path /path/to/docs
 lkragl status --find-workspace
 ```
 
-## Public Chat (work in progress)
+## Public Chat
 
-A read-only, token-authenticated chat surface for sharing a single workspace with other people, served on a separate port from the admin UI so the workspace-management API is never network-reachable. Set `PUBLIC_PORT` in `.env` to enable it.
+A read-only, token-authenticated chat UI for sharing a single workspace with other people, served on a separate port from the admin UI so the workspace-management API is never network-reachable. Set `PUBLIC_PORT` in `.env` to enable it.
 
 Tokens are managed with `lkragl`:
 
@@ -202,15 +203,9 @@ lkragl token revoke <id>                                          # disable a to
 
 Deleting a workspace revokes all of its tokens.
 
-Open `http://<host>:<PUBLIC_PORT>/api/chat` with a valid `?token=` to start chatting (a dedicated frontend UI is still being built — see below). The API:
+Share `http://<host>:<PUBLIC_PORT>/?token=<token>` with the recipient. The page exchanges the token for an `HttpOnly` cookie on first load (redirecting to a clean URL), so the token itself doesn't stay visible or need to be resent. The UI supports multi-turn chat (with the same query rewriter as the admin UI) and a "Chat History" panel scoped to that token's workspace; citations link to `GET /api/file?path=...` to view the source file in the browser, or `&download=1` to download it — there is no workspace switching, index management, or settings, and no ability to delete chat history from this UI.
 
-- `POST /api/chat` — `{ query, history?, session_id? }` → `{ session_id, answer, citations, rewriterFallback }`. Omit `session_id` on the first call; a session is created automatically and its id returned for follow-up turns.
-- `GET /api/chats` / `GET /api/chats/:id` — list/resume past chats, scoped to the token's workspace only.
-- `GET /api/file?path=...` — view a citation's source file in the browser; add `&download=1` to download it instead. Paths are restricted to the token's workspace.
-
-Every `POST /api/chat` call is recorded in an access log (token, query, prompt/completion token counts). Set `LLM_PRICE_INPUT_PER_1M` / `LLM_PRICE_OUTPUT_PER_1M` in `.env` to also record an estimated USD cost per request; otherwise only token counts are recorded.
-
-The dedicated read-only frontend (`public-chat/`) is not built yet — this section will be updated once it lands.
+Every chat turn is recorded in an access log (token, query, prompt/completion token counts). Set `LLM_PRICE_INPUT_PER_1M` / `LLM_PRICE_OUTPUT_PER_1M` in `.env` to also record an estimated USD cost per request; otherwise only token counts are recorded.
 
 ## Changing the Embedding Model
 
@@ -225,12 +220,16 @@ npm run dev   # tsx watch mode (auto-reload on source change)
 ## Architecture
 
 ```
-[Browser]                          [CLI: lkragl]
-    ↕ HTTP                              ↕
-[Express (Node.js / TypeScript)]   [cli.ts]
+[Browser: admin UI]        [Browser: public chat]      [CLI: lkragl]
+    ↕ HTTP (127.0.0.1)          ↕ HTTP (0.0.0.0)              ↕
+[Admin app: server.ts]     [Public app: publicServer.ts]  [cli.ts]
     ├── Indexer (fast-glob → parser → chunker → Embedding API → sqlite-vec)
     ├── Query Rewriter (conversation history + user input → clean RAG query)
     ├── Retriever (RAG query → Embedding API → vector KNN + FTS5 BM25 → RRF merge)
     ├── LLM (conversation history + RAG context + user input → cited answer)
-    └── SQLite + sqlite-vec (embedded vector DB)
+    └── SQLite + sqlite-vec (embedded vector DB, shared by both apps)
+
+Public app has no admin routes mounted and skips the Host-header guard;
+every request is instead gated by a per-recipient token (middleware/publicAuth.ts)
+resolved to a single workspace, disabled unless PUBLIC_PORT is set.
 ```

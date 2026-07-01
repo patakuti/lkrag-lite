@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>lkrag-lite — Chat</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1 id="chat-title">lkrag-lite</h1>
+    </header>
+
+    <div id="top-pane">
+      <div id="history-row">
+        <div id="history-header">
+          <span class="pane-label">Chat History</span>
+          <button id="btn-delete-all-chats" class="danger btn-sm" title="Delete all chats">Delete All</button>
+        </div>
+        <div id="chat-history-list"></div>
+      </div>
+    </div>
+
+    <div id="chat-main">
+      <div id="chat-header">
+        <span id="chat-error-banner" class="error hidden"></span>
+        <div class="chat-header-actions">
+          <button id="btn-copy-all">Copy All</button>
+          <button id="btn-new-chat">New Chat</button>
+        </div>
+      </div>
+
+      <div id="chat-thread"></div>
+
+      <div id="chat-input-area">
+        <p id="search-error" class="error hidden"></p>
+        <form id="search-form">
+          <textarea id="search-query" rows="3" placeholder="Ask a question..." required></textarea>
+          <button type="submit" id="btn-search">Send</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script src="/marked.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

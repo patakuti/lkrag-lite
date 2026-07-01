@@ -9,10 +9,16 @@ export interface Citation {
   snippet: string;
 }
 
+export interface LLMUsage {
+  promptTokens: number | null;
+  completionTokens: number | null;
+}
+
 export interface LLMResult {
   answer: string;
   citations: Citation[];
   rewriterFallback: boolean;
+  usage: LLMUsage;
 }
 
 export interface ConversationMessage {
@@ -52,13 +58,25 @@ function normalizeCitations(text: string): string {
 
 // ---------- OpenAI / OpenAI-compatible ----------
 
+interface OpenAIChatResponse {
+  choices: { message: { content: string } }[];
+  usage?: { prompt_tokens: number; completion_tokens: number };
+}
+
+function usageFromOpenAI(json: OpenAIChatResponse): LLMUsage {
+  return {
+    promptTokens: json.usage?.prompt_tokens ?? null,
+    completionTokens: json.usage?.completion_tokens ?? null,
+  };
+}
+
 async function callOpenAI(
   baseUrl: string,
   apiKey: string,
   model: string,
   systemPrompt: string,
   messages: { role: string; content: string }[]
-): Promise<string> {
+): Promise<{ content: string; usage: LLMUsage }> {
   const res = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -76,10 +94,8 @@ async function callOpenAI(
     throw new Error(`LLM API error ${res.status}: ${text}`);
   }
 
-  const json = await res.json() as {
-    choices: { message: { content: string } }[];
-  };
-  return json.choices[0].message.content;
+  const json = await res.json() as OpenAIChatResponse;
+  return { content: json.choices[0].message.content, usage: usageFromOpenAI(json) };
 }
 
 async function callOpenAIStructured(
@@ -88,7 +104,7 @@ async function callOpenAIStructured(
   model: string,
   systemPrompt: string,
   userPrompt: string
-): Promise<string> {
+): Promise<{ content: string; usage: LLMUsage }> {
   const res = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -124,20 +140,30 @@ async function callOpenAIStructured(
     throw new Error(`Query rewriter API error ${res.status}: ${text}`);
   }
 
-  const json = await res.json() as {
-    choices: { message: { content: string } }[];
-  };
-  return json.choices[0].message.content;
+  const json = await res.json() as OpenAIChatResponse;
+  return { content: json.choices[0].message.content, usage: usageFromOpenAI(json) };
 }
 
 // ---------- Anthropic ----------
+
+interface AnthropicMessagesResponse {
+  content: { type: string; text?: string; name?: string; input?: unknown }[];
+  usage?: { input_tokens: number; output_tokens: number };
+}
+
+function usageFromAnthropic(json: AnthropicMessagesResponse): LLMUsage {
+  return {
+    promptTokens: json.usage?.input_tokens ?? null,
+    completionTokens: json.usage?.output_tokens ?? null,
+  };
+}
 
 async function callAnthropicStructured(
   apiKey: string,
   model: string,
   systemPrompt: string,
   userPrompt: string
-): Promise<string> {
+): Promise<{ content: string; usage: LLMUsage }> {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -170,14 +196,10 @@ async function callAnthropicStructured(
     throw new Error(`Query rewriter API error ${res.status}: ${text}`);
   }
 
-  const json = await res.json() as {
-    content: { type: string; name?: string; input?: unknown }[];
-  };
+  const json = await res.json() as AnthropicMessagesResponse;
   const toolUse = json.content.find((b) => b.type === 'tool_use' && b.name === 'search_query');
-  if (toolUse?.input) {
-    return JSON.stringify(toolUse.input);
-  }
-  return '{}';
+  const content = toolUse?.input ? JSON.stringify(toolUse.input) : '{}';
+  return { content, usage: usageFromAnthropic(json) };
 }
 
 async function callAnthropic(
@@ -185,7 +207,7 @@ async function callAnthropic(
   model: string,
   systemPrompt: string,
   messages: { role: string; content: string }[]
-): Promise<string> {
+): Promise<{ content: string; usage: LLMUsage }> {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -206,19 +228,19 @@ async function callAnthropic(
     throw new Error(`Anthropic API error ${res.status}: ${text}`);
   }
 
-  const json = await res.json() as {
-    content: { type: string; text: string }[];
-  };
+  const json = await res.json() as AnthropicMessagesResponse;
   const block = json.content.find((b) => b.type === 'text');
-  return block?.text ?? '';
+  return { content: block?.text ?? '', usage: usageFromAnthropic(json) };
 }
 
 // ---------- Query Rewriter ----------
 
+const NO_USAGE: LLMUsage = { promptTokens: null, completionTokens: null };
+
 export async function rewriteQuery(
   userInput: string,
   history: ConversationMessage[]
-): Promise<{ searchQuery: string; fallback: boolean }> {
+): Promise<{ searchQuery: string; fallback: boolean; usage: LLMUsage }> {
   const provider = process.env.QUERY_REWRITER_PROVIDER ?? 'openai';
 
   const historyText = history
@@ -230,11 +252,12 @@ export async function rewriteQuery(
 
   try {
     let raw: string;
+    let usage: LLMUsage;
 
     if (provider === 'anthropic') {
       const apiKey = process.env.ANTHROPIC_API_KEY ?? '';
       const model  = process.env.QUERY_REWRITER_MODEL ?? 'claude-haiku-4-5';
-      raw = await callAnthropicStructured(apiKey, model, REWRITER_SYSTEM_PROMPT, userPrompt);
+      ({ content: raw, usage } = await callAnthropicStructured(apiKey, model, REWRITER_SYSTEM_PROMPT, userPrompt));
     } else {
       const model   = process.env.QUERY_REWRITER_MODEL ?? 'gpt-4o-mini';
       const apiKey  = process.env.OPENAI_API_KEY ?? '';
@@ -242,7 +265,7 @@ export async function rewriteQuery(
         provider === 'openai-compatible'
           ? (process.env.OPENAI_COMPATIBLE_BASE_URL ?? 'http://localhost:4000/v1').replace(/\/$/, '')
           : 'https://api.openai.com/v1';
-      raw = await callOpenAIStructured(baseUrl, apiKey, model, REWRITER_SYSTEM_PROMPT, userPrompt);
+      ({ content: raw, usage } = await callOpenAIStructured(baseUrl, apiKey, model, REWRITER_SYSTEM_PROMPT, userPrompt));
     }
 
     const parsed = JSON.parse(raw) as { search_query?: unknown };
@@ -251,11 +274,11 @@ export async function rewriteQuery(
       : null;
 
     if (!searchQuery) {
-      return { searchQuery: userInput, fallback: true };
+      return { searchQuery: userInput, fallback: true, usage };
     }
-    return { searchQuery, fallback: false };
+    return { searchQuery, fallback: false, usage };
   } catch {
-    return { searchQuery: userInput, fallback: true };
+    return { searchQuery: userInput, fallback: true, usage: NO_USAGE };
   }
 }
 
@@ -271,6 +294,7 @@ export async function generateAnswer(
     return {
       answer: 'No relevant documents found in the active workspace.',
       citations: [],
+      usage: NO_USAGE,
     };
   }
 
@@ -299,17 +323,18 @@ export async function generateAnswer(
   }
 
   let answer: string;
+  let usage: LLMUsage;
 
   if (provider === 'anthropic') {
     const apiKey = process.env.ANTHROPIC_API_KEY ?? '';
-    answer = await callAnthropic(apiKey, model, systemPrompt, messages);
+    ({ content: answer, usage } = await callAnthropic(apiKey, model, systemPrompt, messages));
   } else {
     const apiKey = process.env.OPENAI_API_KEY ?? '';
     const baseUrl =
       provider === 'openai-compatible'
         ? (process.env.OPENAI_COMPATIBLE_BASE_URL ?? 'http://localhost:4000/v1').replace(/\/$/, '')
         : 'https://api.openai.com/v1';
-    answer = await callOpenAI(baseUrl, apiKey, model, systemPrompt, messages);
+    ({ content: answer, usage } = await callOpenAI(baseUrl, apiKey, model, systemPrompt, messages));
   }
 
   answer = normalizeCitations(answer);
@@ -322,5 +347,5 @@ export async function generateAnswer(
     snippet: c.snippet,
   }));
 
-  return { answer, citations };
+  return { answer, citations, usage };
 }

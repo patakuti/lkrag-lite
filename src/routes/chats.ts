@@ -32,10 +32,10 @@ router.post('/', (req, res) => {
   res.status(201).json(session);
 });
 
-// GET /api/chats/:id — session + messages
+// GET /api/chats/:id — session + messages (excludes public-token chats, D33)
 router.get('/:id', (req, res) => {
   const session = getChatSession(req.params.id);
-  if (!session) {
+  if (!session || session.token_id !== null) {
     res.status(404).json({ error: 'Session not found' });
     return;
   }

@@ -10,6 +10,7 @@ import configRouter from './routes/config.js';
 import openRouter from './routes/open.js';
 import browseRouter from './routes/browse.js';
 import chatsRouter from './routes/chats.js';
+import { createPublicApp } from './publicServer.js';
 
 // Load .env in cascade order (later calls override earlier):
 //   1. User config dir  (%APPDATA%\lkragl\.env  or  ~/.config/lkragl/.env)
@@ -60,3 +61,11 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 app.listen(PORT, '127.0.0.1', () => {
   console.log(`lkrag-lite server listening on http://localhost:${PORT}`);
 });
+
+// Public read-only workspace chat (§11). Disabled unless PUBLIC_PORT is set.
+const PUBLIC_PORT = process.env.PUBLIC_PORT ? Number(process.env.PUBLIC_PORT) : null;
+if (PUBLIC_PORT) {
+  createPublicApp().listen(PUBLIC_PORT, '0.0.0.0', () => {
+    console.log(`lkrag-lite public chat listening on http://0.0.0.0:${PUBLIC_PORT}`);
+  });
+}

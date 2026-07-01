@@ -4,7 +4,10 @@ import fs from 'fs';
 import dotenv from 'dotenv';
 import { Command, InvalidArgumentError } from 'commander';
 import { getUserConfigDir, getUserDataDir } from './config/paths.js';
-import { initDb, listWorkspaces, addWorkspace, activateWorkspace, getIndexedFileCount, getLastIndexedAt, Workspace } from './db/sqlite.js';
+import {
+  initDb, listWorkspaces, addWorkspace, activateWorkspace, getIndexedFileCount, getLastIndexedAt, Workspace,
+  createPublicToken, listPublicTokens, revokePublicToken,
+} from './db/sqlite.js';
 import { runUpdateForWorkspace, runRebuildForWorkspace, getStatus, requestCancel } from './indexer/index.js';
 import { retrieveForWorkspace, RetrievedChunk } from './search/retriever.js';
 
@@ -271,6 +274,56 @@ sharedOptions(
   process.stdout.write(`Files     : ${fileCount}\n`);
   process.stdout.write(`Last index: ${lastIndexed ?? 'never'}\n`);
 });
+
+// ---------- token ----------
+
+const tokenCmd = program.command('token').description('manage public chat access tokens');
+
+sharedOptions(
+  tokenCmd
+    .command('create')
+    .description('issue a new public chat token for a workspace')
+    .requiredOption('--name <label>', 'label identifying the recipient of this token')
+).action((opts) => {
+  if (opts.envFile) loadEnvFile(opts.envFile);
+  initDbFromEnv();
+  const ws = resolveWorkspace(opts, 'require');
+  const { token, record } = createPublicToken(ws.id, opts.name);
+  process.stdout.write(`Created token "${record.label}" for workspace "${ws.name}" (${ws.path})\n`);
+  process.stdout.write(`token: ${token}\n`);
+  process.stdout.write('This value is shown only once and cannot be retrieved later; store it securely.\n');
+});
+
+tokenCmd
+  .command('list')
+  .description('list public chat tokens')
+  .action(() => {
+    initDbFromEnv();
+    const tokens = listPublicTokens();
+    if (tokens.length === 0) {
+      process.stdout.write('No tokens found.\n');
+      return;
+    }
+    for (const t of tokens) {
+      const ws = t.workspace_name ?? '(deleted workspace)';
+      const status = t.enabled ? 'enabled' : 'revoked';
+      process.stdout.write(`[${t.id}] ${t.label} -> ${ws} (${status}, created ${t.created_at})\n`);
+    }
+  });
+
+tokenCmd
+  .command('revoke <id>')
+  .description('revoke a public chat token')
+  .action((id: string) => {
+    initDbFromEnv();
+    const tokenId = parseInt(id, 10);
+    if (isNaN(tokenId)) {
+      process.stderr.write('Error: id must be an integer.\n');
+      process.exit(1);
+    }
+    revokePublicToken(tokenId);
+    process.stdout.write(`Token ${tokenId} revoked.\n`);
+  });
 
 program.parseAsync(process.argv).catch((err) => {
   process.stderr.write(`Error: ${err.message}\n`);

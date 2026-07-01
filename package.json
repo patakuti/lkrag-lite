@@ -8,7 +8,7 @@
     "lkragl": "dist/cli.js"
   },
   "scripts": {
-    "build": "tsc && node -e \"require('fs').copyFileSync('node_modules/marked/lib/marked.umd.js','public/marked.min.js')\"",
+    "build": "tsc && node -e \"const fs=require('fs');for(const dir of ['public','public-chat']){fs.copyFileSync('node_modules/marked/lib/marked.umd.js',dir+'/marked.min.js')}\"",
     "start": "node dist/server.js",
     "dev": "tsx watch src/server.ts",
     "pkg:build": "pkg dist/cli.js --config package.json --out-path pkg-dist",

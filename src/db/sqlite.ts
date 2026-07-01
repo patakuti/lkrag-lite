@@ -1,6 +1,7 @@
 import os from 'os';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import Database from 'better-sqlite3';
 import * as sqliteVec from 'sqlite-vec';
 
@@ -96,9 +97,19 @@ export function initDb(dbPath: string): Database.Database {
   db.pragma('mmap_size = 536870912'); // 512 MB mmap
 
   createSchema(db);
+  migrateChatSessionsTokenId(db);
   syncFtsTable(db);
   _db = db;
   return db;
+}
+
+// chat_sessions predates public_tokens (D15 before D33); add the column for
+// existing databases instead of baking it into the CREATE TABLE above.
+function migrateChatSessionsTokenId(db: Database.Database): void {
+  const cols = db.prepare('PRAGMA table_info(chat_sessions)').all() as { name: string }[];
+  if (!cols.some((c) => c.name === 'token_id')) {
+    db.exec('ALTER TABLE chat_sessions ADD COLUMN token_id INTEGER REFERENCES public_tokens(id) ON DELETE SET NULL');
+  }
 }
 
 function createSchema(db: Database.Database): void {
@@ -166,6 +177,30 @@ function createSchema(db: Database.Database): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_messages_session ON chat_messages(session_id);
+
+    CREATE TABLE IF NOT EXISTS public_tokens (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      token_hash    TEXT    NOT NULL UNIQUE,
+      workspace_id  INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      label         TEXT    NOT NULL,
+      enabled       INTEGER NOT NULL DEFAULT 1,
+      created_at    TEXT    NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_public_tokens_workspace ON public_tokens(workspace_id);
+
+    CREATE TABLE IF NOT EXISTS public_access_log (
+      id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+      token_id           INTEGER REFERENCES public_tokens(id) ON DELETE SET NULL,
+      workspace_id       INTEGER,
+      query              TEXT    NOT NULL,
+      prompt_tokens      INTEGER,
+      completion_tokens  INTEGER,
+      estimated_cost_usd REAL,
+      created_at         TEXT    NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_public_access_log_token ON public_access_log(token_id);
   `);
 }
 
@@ -455,6 +490,7 @@ export function getLastIndexedAt(workspaceId: number): string | null {
 export interface ChatSession {
   id: string;
   workspace_id: number | null;
+  token_id: number | null;
   title: string;
   created_at: number;
   updated_at: number;
@@ -473,21 +509,47 @@ export interface ChatMessage {
   created_at: number;
 }
 
+// Admin UI history excludes sessions created via a public chat token (D33):
+// those belong to whoever holds that token, not to the local admin user.
 export function listChatSessions(): ChatSessionWithWorkspace[] {
   return getDb().prepare(`
     SELECT s.*, w.name AS workspace_name
     FROM chat_sessions s
     LEFT JOIN workspaces w ON w.id = s.workspace_id
+    WHERE s.token_id IS NULL
     ORDER BY s.updated_at DESC
   `).all() as ChatSessionWithWorkspace[];
 }
 
-export function createChatSession(id: string, workspaceId: number | null, title: string): ChatSession {
+// Public chat history is scoped per issuing token, not per workspace, so that
+// two tokens pointing at the same workspace don't see each other's chats (D33).
+export function listChatSessionsForToken(tokenId: number): ChatSession[] {
+  return getDb()
+    .prepare('SELECT * FROM chat_sessions WHERE token_id = ? ORDER BY updated_at DESC')
+    .all(tokenId) as ChatSession[];
+}
+
+export function deleteChatSessionForToken(id: string, tokenId: number): number {
+  return getDb()
+    .prepare('DELETE FROM chat_sessions WHERE id = ? AND token_id = ?')
+    .run(id, tokenId).changes;
+}
+
+export function deleteChatSessionsForToken(tokenId: number): void {
+  getDb().prepare('DELETE FROM chat_sessions WHERE token_id = ?').run(tokenId);
+}
+
+export function createChatSession(
+  id: string,
+  workspaceId: number | null,
+  title: string,
+  tokenId: number | null = null
+): ChatSession {
   const now = Date.now();
   getDb().prepare(
-    'INSERT INTO chat_sessions (id, workspace_id, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
-  ).run(id, workspaceId, title, now, now);
-  return { id, workspace_id: workspaceId, title, created_at: now, updated_at: now };
+    'INSERT INTO chat_sessions (id, workspace_id, token_id, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(id, workspaceId, tokenId, title, now, now);
+  return { id, workspace_id: workspaceId, token_id: tokenId, title, created_at: now, updated_at: now };
 }
 
 export function getChatSession(id: string): ChatSessionWithWorkspace | null {
@@ -520,12 +582,14 @@ export function appendChatMessage(
   db.prepare('UPDATE chat_sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
 }
 
+// Scoped to token_id IS NULL so the admin "delete" actions can't reach into
+// a public token's chat history (mirrors the read-side scoping above).
 export function deleteChatSession(id: string): void {
-  getDb().prepare('DELETE FROM chat_sessions WHERE id = ?').run(id);
+  getDb().prepare('DELETE FROM chat_sessions WHERE id = ? AND token_id IS NULL').run(id);
 }
 
 export function deleteAllChatSessions(): void {
-  getDb().prepare('DELETE FROM chat_sessions').run();
+  getDb().prepare('DELETE FROM chat_sessions WHERE token_id IS NULL').run();
 }
 
 // ---------- workspace-level clear ----------
@@ -546,4 +610,70 @@ export function clearWorkspaceIndex(workspaceId: number): void {
     db.prepare('DELETE FROM files WHERE workspace_id = ?').run(workspaceId);
   });
   clear();
+}
+
+// ---------- public tokens ----------
+
+export interface PublicToken {
+  id: number;
+  workspace_id: number;
+  label: string;
+  enabled: number;
+  created_at: string;
+}
+
+export interface PublicTokenWithWorkspace extends PublicToken {
+  workspace_name: string | null;
+}
+
+function hashPublicToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+export function createPublicToken(workspaceId: number, label: string): { token: string; record: PublicToken } {
+  const db = getDb();
+  const token = crypto.randomBytes(24).toString('base64url');
+  const now = new Date().toISOString();
+  const info = db.prepare(
+    'INSERT INTO public_tokens (token_hash, workspace_id, label, enabled, created_at) VALUES (?, ?, ?, 1, ?)'
+  ).run(hashPublicToken(token), workspaceId, label, now);
+  const record = db.prepare('SELECT * FROM public_tokens WHERE id = ?').get(info.lastInsertRowid) as PublicToken;
+  return { token, record };
+}
+
+export function listPublicTokens(): PublicTokenWithWorkspace[] {
+  return getDb().prepare(`
+    SELECT t.*, w.name AS workspace_name
+    FROM public_tokens t
+    LEFT JOIN workspaces w ON w.id = t.workspace_id
+    ORDER BY t.id
+  `).all() as PublicTokenWithWorkspace[];
+}
+
+export function revokePublicToken(id: number): void {
+  getDb().prepare('UPDATE public_tokens SET enabled = 0 WHERE id = ?').run(id);
+}
+
+/** Looks up an enabled token by its plaintext value (hashes internally before querying). */
+export function findPublicTokenByToken(token: string): PublicToken | null {
+  const row = getDb()
+    .prepare('SELECT * FROM public_tokens WHERE token_hash = ? AND enabled = 1')
+    .get(hashPublicToken(token)) as PublicToken | undefined;
+  return row ?? null;
+}
+
+// ---------- public access log ----------
+
+export function insertPublicAccessLog(
+  tokenId: number | null,
+  workspaceId: number | null,
+  query: string,
+  promptTokens: number | null,
+  completionTokens: number | null,
+  estimatedCostUsd: number | null
+): void {
+  const now = new Date().toISOString();
+  getDb().prepare(
+    'INSERT INTO public_access_log (token_id, workspace_id, query, prompt_tokens, completion_tokens, estimated_cost_usd, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).run(tokenId, workspaceId, query, promptTokens, completionTokens, estimatedCostUsd, now);
 }

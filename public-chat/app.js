@@ -59,14 +59,40 @@ function renderChatHistory(sessions) {
       <div class="history-item${isActive ? ' active' : ''}" data-id="${esc(s.id)}">
         <span class="history-item-title" title="${esc(s.title)}">${esc(s.title)}</span>
         <span class="history-item-date">${date}</span>
+        <button class="btn-delete-chat" data-id="${esc(s.id)}" title="Delete">×</button>
       </div>
     `;
   }).join('');
 
   list.querySelectorAll('.history-item').forEach((el) => {
-    el.addEventListener('click', () => resumeChat(el.dataset.id));
+    el.addEventListener('click', (e) => {
+      if (e.target.classList.contains('btn-delete-chat')) return;
+      resumeChat(el.dataset.id);
+    });
+  });
+
+  list.querySelectorAll('.btn-delete-chat').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteSingleChat(btn.dataset.id);
+    });
   });
 }
+
+async function deleteSingleChat(sessionId) {
+  await api('DELETE', `/chats/${sessionId}`);
+  if (currentSessionId === sessionId) {
+    clearChat();
+  } else {
+    await loadChatHistory();
+  }
+}
+
+document.getElementById('btn-delete-all-chats').addEventListener('click', async () => {
+  if (!confirm('Delete all of your chat history?')) return;
+  await api('DELETE', '/chats');
+  clearChat();
+});
 
 function formatHistoryDate(unixMs) {
   const d = new Date(unixMs);

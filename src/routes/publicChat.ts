@@ -5,10 +5,12 @@ import { generateAnswer, rewriteQuery, ConversationMessage, LLMUsage } from '../
 import {
   appendChatMessage,
   createChatSession,
+  deleteChatSessionForToken,
+  deleteChatSessionsForToken,
   getChatMessages,
   getChatSession,
   insertPublicAccessLog,
-  listChatSessionsForWorkspace,
+  listChatSessionsForToken,
   listWorkspaces,
 } from '../db/sqlite.js';
 import { runtimeConfig } from '../config/runtime.js';
@@ -42,22 +44,38 @@ router.get('/whoami', (req, res) => {
   res.json({ label, workspaceName: ws?.name ?? null });
 });
 
-// GET /chats — sessions belonging to this token's workspace only
+// GET /chats — sessions created by this token only (not shared with other
+// tokens on the same workspace, D33)
 router.get('/chats', (req, res) => {
-  const workspaceId = req.publicAuth!.workspaceId;
-  res.json(listChatSessionsForWorkspace(workspaceId));
+  res.json(listChatSessionsForToken(req.publicAuth!.tokenId));
 });
 
-// GET /chats/:id — session + messages, scoped to this token's workspace
+// GET /chats/:id — session + messages, scoped to this token only
 router.get('/chats/:id', (req, res) => {
-  const workspaceId = req.publicAuth!.workspaceId;
+  const tokenId = req.publicAuth!.tokenId;
   const session = getChatSession(req.params.id);
-  if (!session || session.workspace_id !== workspaceId) {
+  if (!session || session.token_id !== tokenId) {
     res.status(404).json({ error: 'Session not found' });
     return;
   }
   const messages = getChatMessages(req.params.id);
   res.json({ session, messages });
+});
+
+// DELETE /chats/:id — delete a single session, scoped to this token only
+router.delete('/chats/:id', (req, res) => {
+  const changes = deleteChatSessionForToken(req.params.id, req.publicAuth!.tokenId);
+  if (changes === 0) {
+    res.status(404).json({ error: 'Session not found' });
+    return;
+  }
+  res.status(204).end();
+});
+
+// DELETE /chats — delete all sessions belonging to this token only
+router.delete('/chats', (req, res) => {
+  deleteChatSessionsForToken(req.publicAuth!.tokenId);
+  res.status(204).end();
 });
 
 // POST /chat — send a message; creates a session on first call if none given
@@ -87,14 +105,14 @@ router.post('/chat', (req, res) => {
     let sessionId: string;
     if (typeof session_id === 'string' && session_id.trim()) {
       const existing = getChatSession(session_id.trim());
-      if (!existing || existing.workspace_id !== workspaceId) {
+      if (!existing || existing.token_id !== tokenId) {
         res.status(404).json({ error: 'Session not found' });
         return;
       }
       sessionId = existing.id;
     } else {
       sessionId = randomUUID();
-      createChatSession(sessionId, workspaceId, query.trim().slice(0, 60));
+      createChatSession(sessionId, workspaceId, query.trim().slice(0, 60), tokenId);
     }
 
     try {

@@ -97,9 +97,19 @@ export function initDb(dbPath: string): Database.Database {
   db.pragma('mmap_size = 536870912'); // 512 MB mmap
 
   createSchema(db);
+  migrateChatSessionsTokenId(db);
   syncFtsTable(db);
   _db = db;
   return db;
+}
+
+// chat_sessions predates public_tokens (D15 before D33); add the column for
+// existing databases instead of baking it into the CREATE TABLE above.
+function migrateChatSessionsTokenId(db: Database.Database): void {
+  const cols = db.prepare('PRAGMA table_info(chat_sessions)').all() as { name: string }[];
+  if (!cols.some((c) => c.name === 'token_id')) {
+    db.exec('ALTER TABLE chat_sessions ADD COLUMN token_id INTEGER REFERENCES public_tokens(id) ON DELETE SET NULL');
+  }
 }
 
 function createSchema(db: Database.Database): void {
@@ -480,6 +490,7 @@ export function getLastIndexedAt(workspaceId: number): string | null {
 export interface ChatSession {
   id: string;
   workspace_id: number | null;
+  token_id: number | null;
   title: string;
   created_at: number;
   updated_at: number;
@@ -498,27 +509,47 @@ export interface ChatMessage {
   created_at: number;
 }
 
+// Admin UI history excludes sessions created via a public chat token (D33):
+// those belong to whoever holds that token, not to the local admin user.
 export function listChatSessions(): ChatSessionWithWorkspace[] {
   return getDb().prepare(`
     SELECT s.*, w.name AS workspace_name
     FROM chat_sessions s
     LEFT JOIN workspaces w ON w.id = s.workspace_id
+    WHERE s.token_id IS NULL
     ORDER BY s.updated_at DESC
   `).all() as ChatSessionWithWorkspace[];
 }
 
-export function listChatSessionsForWorkspace(workspaceId: number): ChatSession[] {
+// Public chat history is scoped per issuing token, not per workspace, so that
+// two tokens pointing at the same workspace don't see each other's chats (D33).
+export function listChatSessionsForToken(tokenId: number): ChatSession[] {
   return getDb()
-    .prepare('SELECT * FROM chat_sessions WHERE workspace_id = ? ORDER BY updated_at DESC')
-    .all(workspaceId) as ChatSession[];
+    .prepare('SELECT * FROM chat_sessions WHERE token_id = ? ORDER BY updated_at DESC')
+    .all(tokenId) as ChatSession[];
 }
 
-export function createChatSession(id: string, workspaceId: number | null, title: string): ChatSession {
+export function deleteChatSessionForToken(id: string, tokenId: number): number {
+  return getDb()
+    .prepare('DELETE FROM chat_sessions WHERE id = ? AND token_id = ?')
+    .run(id, tokenId).changes;
+}
+
+export function deleteChatSessionsForToken(tokenId: number): void {
+  getDb().prepare('DELETE FROM chat_sessions WHERE token_id = ?').run(tokenId);
+}
+
+export function createChatSession(
+  id: string,
+  workspaceId: number | null,
+  title: string,
+  tokenId: number | null = null
+): ChatSession {
   const now = Date.now();
   getDb().prepare(
-    'INSERT INTO chat_sessions (id, workspace_id, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
-  ).run(id, workspaceId, title, now, now);
-  return { id, workspace_id: workspaceId, title, created_at: now, updated_at: now };
+    'INSERT INTO chat_sessions (id, workspace_id, token_id, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(id, workspaceId, tokenId, title, now, now);
+  return { id, workspace_id: workspaceId, token_id: tokenId, title, created_at: now, updated_at: now };
 }
 
 export function getChatSession(id: string): ChatSessionWithWorkspace | null {
@@ -551,12 +582,14 @@ export function appendChatMessage(
   db.prepare('UPDATE chat_sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
 }
 
+// Scoped to token_id IS NULL so the admin "delete" actions can't reach into
+// a public token's chat history (mirrors the read-side scoping above).
 export function deleteChatSession(id: string): void {
-  getDb().prepare('DELETE FROM chat_sessions WHERE id = ?').run(id);
+  getDb().prepare('DELETE FROM chat_sessions WHERE id = ? AND token_id IS NULL').run(id);
 }
 
 export function deleteAllChatSessions(): void {
-  getDb().prepare('DELETE FROM chat_sessions').run();
+  getDb().prepare('DELETE FROM chat_sessions WHERE token_id IS NULL').run();
 }
 
 // ---------- workspace-level clear ----------

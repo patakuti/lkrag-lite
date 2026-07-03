@@ -58,6 +58,17 @@ npm start
 
 Open http://localhost:3456 in your browser.
 
+## Try it with sample data
+
+No documents of your own yet? [`examples/`](examples/) contains a small fictional
+project-notes dataset (overview, spec, meeting notes, roadmap, decision log,
+glossary, known issues) you can point a workspace at right away — see
+[`examples/README.md`](examples/README.md) for setup steps and example questions
+to ask. `examples/demo.gif` shows the full flow (indexing → chat → citations →
+live re-index after an edit) end to end:
+
+![lkrag-lite demo](examples/demo.gif)
+
 ## Configuration (`.env`)
 
 | Variable | Default | Description |

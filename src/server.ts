@@ -2,6 +2,7 @@ import path from 'path';
 import express from 'express';
 import dotenv from 'dotenv';
 import { getUserConfigDir, getUserDataDir } from './config/paths.js';
+import { validateProviderConfig, printProviderConfig } from './config/providers.js';
 import { initDb } from './db/sqlite.js';
 import workspacesRouter from './routes/workspaces.js';
 import indexRouter from './routes/index_route.js';
@@ -17,6 +18,8 @@ import { createPublicApp } from './publicServer.js';
 //   2. Current working directory (./.env)
 dotenv.config({ path: path.join(getUserConfigDir(), '.env'), quiet: true });
 dotenv.config({ path: path.join(process.cwd(), '.env'), override: true, quiet: true });
+
+validateProviderConfig();
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3456;
@@ -60,6 +63,7 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 
 app.listen(PORT, '127.0.0.1', () => {
   console.log(`lkrag-lite server listening on http://localhost:${PORT}`);
+  printProviderConfig();
 });
 
 // Public read-only workspace chat (§11). Disabled unless PUBLIC_PORT is set.

@@ -71,33 +71,73 @@ live re-index after an edit) end to end:
 
 ## Configuration (`.env`)
 
+### Database
+
 | Variable | Default | Description |
 |---|---|---|
 | `DATABASE_PATH` | Win: `%APPDATA%\lkragl\lkrag.db` / Linux・Mac: `~/.local/share/lkragl/lkrag.db` | SQLite database file path |
 | `SQLITE_JOURNAL_MODE` | `wal` (Linux/Mac/WSL2), `delete` (WSL1 auto-detected) | SQLite journal mode. WSL1 is detected automatically and uses `delete` mode since WAL requires mmap/fcntl support unavailable in WSL1. |
+
+### Index targets
+
+| Variable | Default | Description |
+|---|---|---|
 | `RAG_INCLUDE_PATTERNS` | `**/*.md,...` | Glob patterns for files to index (comma-separated). To index PowerPoint files, add `**/*.pptx`. |
 | `RAG_EXCLUDE_PATTERNS` | `node_modules/**,.git/**` | Glob patterns to exclude |
-| `EMBEDDING_PROVIDER` | `openai` | `openai` / `litellm` / `ollama` |
+
+### Embedding
+
+| Variable | Default | Description |
+|---|---|---|
+| `EMBEDDING_PROVIDER` | `openai` | `openai` / `openai-compatible` (use `openai-compatible` for LiteLLM, Ollama, etc.) |
 | `EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model name |
-| `OPENAI_API_KEY` | — | OpenAI API key (also used for litellm bearer token) |
-| `OPENAI_COMPATIBLE_BASE_URL` | — | Base URL for LiteLLM (`http://localhost:4000/v1`) |
-| `OLLAMA_BASE_URL` | — | Base URL for Ollama (`http://localhost:11434/v1`) |
+| `EMBEDDING_API_KEY` | — | API key used for the embedding call (both `openai` and `openai-compatible`) |
+| `EMBEDDING_BASE_URL` | `http://localhost:4000/v1` | Base URL used only when `EMBEDDING_PROVIDER=openai-compatible` (e.g. `http://localhost:11434/v1` for Ollama) |
 | `EMBEDDING_QUERY_PREFIX` | _(empty)_ | Prefix prepended to query text before embedding (some models require e.g. `"query: "`) |
 | `EMBEDDING_DOCUMENT_PREFIX` | _(empty)_ | Prefix prepended to document text before embedding (some models require e.g. `"passage: "`) |
 | `EMBEDDING_BATCH_SIZE` | `500` | Number of texts embedded per API call |
+
+### LLM
+
+| Variable | Default | Description |
+|---|---|---|
 | `LLM_PROVIDER` | `openai` | `openai` / `anthropic` / `openai-compatible` |
 | `LLM_MODEL` | `gpt-4o-mini` | LLM model name |
-| `ANTHROPIC_API_KEY` | — | Anthropic API key |
+| `LLM_API_KEY` | — | API key used for the LLM call (both `openai` and `openai-compatible`) |
+| `LLM_BASE_URL` | `http://localhost:4000/v1` | Base URL used only when `LLM_PROVIDER=openai-compatible` |
+| `ANTHROPIC_API_KEY` | — | Anthropic API key, used when `LLM_PROVIDER=anthropic` and/or `QUERY_REWRITER_PROVIDER=anthropic` |
+
+### RAG parameters
+
+| Variable | Default | Description |
+|---|---|---|
 | `RAG_MAX_FILE_SIZE` | `10485760` (10MB) | Maximum file size in bytes to index; larger files are skipped |
 | `RAG_CHUNK_SIZE` | `1000` | Chunk size in characters |
 | `RAG_CHUNK_OVERLAP` | `200` | Overlap between consecutive chunks |
 | `RAG_TOP_K` | `5` | Number of chunks to retrieve (overridable from UI) |
 | `RAG_MIN_SIMILARITY` | `0.3` | Minimum cosine similarity score 0–1 applied to vector results before RRF merge (overridable from UI) |
 | `RAG_OUTPUT_INSTRUCTIONS` | _(empty)_ | Extra instructions appended to the LLM system prompt, e.g. `"Answer in Japanese."` (overridable from UI) |
-| `QUERY_REWRITER_PROVIDER` | `openai` | `openai` / `openai-compatible` / `anthropic` |
-| `QUERY_REWRITER_MODEL` | `gpt-4o-mini` (openai) / `claude-haiku-4-5` (anthropic) | Model used by the query rewriter. Reuses `OPENAI_API_KEY` / `OPENAI_COMPATIBLE_BASE_URL` for OpenAI variants, and `ANTHROPIC_API_KEY` for Anthropic. |
+
+### Query Rewriter
+
+| Variable | Default | Description |
+|---|---|---|
+| `QUERY_REWRITER_PROVIDER` | `openai` | `openai` / `anthropic` / `openai-compatible` |
+| `QUERY_REWRITER_MODEL` | `gpt-4o-mini` (openai) / `claude-haiku-4-5` (anthropic) | Model used by the query rewriter |
+| `QUERY_REWRITER_API_KEY` | — | API key used when `QUERY_REWRITER_PROVIDER` is `openai` / `openai-compatible` (uses `ANTHROPIC_API_KEY` when `anthropic`) |
+| `QUERY_REWRITER_BASE_URL` | `http://localhost:4000/v1` | Base URL used only when `QUERY_REWRITER_PROVIDER=openai-compatible` |
+
+### Server
+
+| Variable | Default | Description |
+|---|---|---|
 | `PORT` | `3456` | HTTP server port |
 | `BROWSE_ROOT` | _(user home)_ | Top directory exposed by the file browser when adding a workspace. Restricts navigation to this directory and its subdirectories. Useful when home directory is too broad (e.g. set to `D:\Projects` on Windows or `/data` on Linux). |
+
+### Public chat
+
+| Variable | Default | Description |
+|---|---|---|
 | `PUBLIC_PORT` | _(unset)_ | If set, starts a separate, network-reachable (`0.0.0.0`) read-only chat server on this port, gated by tokens issued with `lkragl token create`. Unset by default (feature disabled). See "Public Chat" below. |
 
 ## Usage

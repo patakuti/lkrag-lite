@@ -14,7 +14,7 @@ import {
   deleteChunksByFile, insertChunk, insertVec, insertFts,
   clearWorkspaceIndex, getActiveWorkspace, Workspace,
 } from '../db/sqlite.js';
-import { embed } from '../search/embedding.js';
+import { embed, EmbeddingApiError } from '../search/embedding.js';
 
 // ---------- types ----------
 
@@ -158,6 +158,12 @@ async function indexWorkspace(workspaceId: number, wsPath: string, rebuild: bool
         }
       }
     } catch (err: unknown) {
+      if (err instanceof EmbeddingApiError) {
+        // The embedding API itself is broken (bad config, unreachable endpoint, etc.);
+        // every remaining file would fail identically, so abort the whole run instead
+        // of skipping file by file.
+        throw err;
+      }
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
         process.stderr.write(`[indexer] skipped (file removed): ${absPath}\n`);
       } else {

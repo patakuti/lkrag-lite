@@ -12,9 +12,10 @@ async function embedBatch(
   apiKey: string,
   model: string,
 ): Promise<number[][]> {
+  const url = `${baseUrl}/embeddings`;
   let res: Response;
   try {
-    res = await fetch(`${baseUrl}/embeddings`, {
+    res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -24,12 +25,12 @@ async function embedBatch(
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    throw new EmbeddingApiError(`Embedding API unreachable at ${baseUrl}: ${msg}`);
+    throw new EmbeddingApiError(`Embedding API unreachable at ${url}: ${msg}`);
   }
 
   if (!res.ok) {
     const text = await res.text();
-    throw new EmbeddingApiError(`Embedding API error ${res.status}: ${text}`);
+    throw new EmbeddingApiError(`Embedding API error ${res.status} at ${url}: ${text}`);
   }
 
   const json = await res.json() as { data: { embedding: number[]; index: number }[] };

@@ -594,14 +594,24 @@ export function deleteAllChatSessions(): void {
 
 // ---------- workspace-level clear ----------
 
+function tableExists(db: Database.Database, name: string): boolean {
+  return !!db.prepare(
+    `SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?`
+  ).get(name);
+}
+
 export function clearWorkspaceIndex(workspaceId: number): void {
   const db = getDb();
   const clear = db.transaction(() => {
-    db.prepare(`
-      DELETE FROM vec_chunks WHERE rowid IN (
-        SELECT c.id FROM chunks c JOIN files f ON c.file_id = f.id WHERE f.workspace_id = ?
-      )
-    `).run(workspaceId);
+    // vec_chunks is created lazily on the first successful embedding call
+    // (see ensureVecTable), so it may not exist yet on a fresh workspace.
+    if (tableExists(db, 'vec_chunks')) {
+      db.prepare(`
+        DELETE FROM vec_chunks WHERE rowid IN (
+          SELECT c.id FROM chunks c JOIN files f ON c.file_id = f.id WHERE f.workspace_id = ?
+        )
+      `).run(workspaceId);
+    }
     db.prepare(`
       DELETE FROM fts_chunks WHERE rowid IN (
         SELECT c.id FROM chunks c JOIN files f ON c.file_id = f.id WHERE f.workspace_id = ?

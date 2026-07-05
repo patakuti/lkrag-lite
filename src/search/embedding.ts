@@ -1,6 +1,10 @@
 import { checkEmbeddingDim } from '../db/sqlite.js';
+import { resolveEmbeddingConfig } from '../config/providers.js';
 
 export type EmbeddingPurpose = 'query' | 'document';
+
+/** Thrown when the embedding API itself is unreachable or rejects the request. */
+export class EmbeddingApiError extends Error {}
 
 async function embedBatch(
   input: string[],
@@ -8,18 +12,24 @@ async function embedBatch(
   apiKey: string,
   model: string,
 ): Promise<number[][]> {
-  const res = await fetch(`${baseUrl}/embeddings`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({ model, input }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${baseUrl}/embeddings`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({ model, input }),
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new EmbeddingApiError(`Embedding API unreachable at ${baseUrl}: ${msg}`);
+  }
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`Embedding API error ${res.status}: ${text}`);
+    throw new EmbeddingApiError(`Embedding API error ${res.status}: ${text}`);
   }
 
   const json = await res.json() as { data: { embedding: number[]; index: number }[] };
@@ -27,18 +37,7 @@ async function embedBatch(
 }
 
 export async function embed(texts: string[], purpose?: EmbeddingPurpose): Promise<number[][]> {
-  const provider = process.env.EMBEDDING_PROVIDER ?? 'openai';
-  const model    = process.env.EMBEDDING_MODEL    ?? 'text-embedding-3-small';
-  const apiKey   = process.env.OPENAI_API_KEY     ?? '';
-
-  let baseUrl: string;
-  if (provider === 'ollama') {
-    baseUrl = (process.env.OLLAMA_BASE_URL ?? 'http://localhost:11434/v1').replace(/\/$/, '');
-  } else if (provider === 'litellm') {
-    baseUrl = (process.env.OPENAI_COMPATIBLE_BASE_URL ?? 'http://localhost:4000/v1').replace(/\/$/, '');
-  } else {
-    baseUrl = 'https://api.openai.com/v1';
-  }
+  const { model, apiKey, baseUrl } = resolveEmbeddingConfig();
 
   const prefix = purpose === 'query'    ? (process.env.EMBEDDING_QUERY_PREFIX    ?? '')
                : purpose === 'document' ? (process.env.EMBEDDING_DOCUMENT_PREFIX ?? '')

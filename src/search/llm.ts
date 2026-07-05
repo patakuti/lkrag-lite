@@ -1,5 +1,6 @@
 import { RetrievedChunk } from './retriever.js';
 import { runtimeConfig } from '../config/runtime.js';
+import { resolveLlmConfig, resolveRewriterConfig } from '../config/providers.js';
 
 export interface Citation {
   n: number;
@@ -241,7 +242,7 @@ export async function rewriteQuery(
   userInput: string,
   history: ConversationMessage[]
 ): Promise<{ searchQuery: string; fallback: boolean; usage: LLMUsage }> {
-  const provider = process.env.QUERY_REWRITER_PROVIDER ?? 'openai';
+  const { provider, model, apiKey, baseUrl } = resolveRewriterConfig();
 
   const historyText = history
     .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
@@ -255,16 +256,8 @@ export async function rewriteQuery(
     let usage: LLMUsage;
 
     if (provider === 'anthropic') {
-      const apiKey = process.env.ANTHROPIC_API_KEY ?? '';
-      const model  = process.env.QUERY_REWRITER_MODEL ?? 'claude-haiku-4-5';
       ({ content: raw, usage } = await callAnthropicStructured(apiKey, model, REWRITER_SYSTEM_PROMPT, userPrompt));
     } else {
-      const model   = process.env.QUERY_REWRITER_MODEL ?? 'gpt-4o-mini';
-      const apiKey  = process.env.OPENAI_API_KEY ?? '';
-      const baseUrl =
-        provider === 'openai-compatible'
-          ? (process.env.OPENAI_COMPATIBLE_BASE_URL ?? 'http://localhost:4000/v1').replace(/\/$/, '')
-          : 'https://api.openai.com/v1';
       ({ content: raw, usage } = await callOpenAIStructured(baseUrl, apiKey, model, REWRITER_SYSTEM_PROMPT, userPrompt));
     }
 
@@ -298,8 +291,7 @@ export async function generateAnswer(
     };
   }
 
-  const provider = process.env.LLM_PROVIDER ?? 'openai';
-  const model    = process.env.LLM_MODEL    ?? 'gpt-4o-mini';
+  const { provider, model, apiKey, baseUrl } = resolveLlmConfig();
 
   const extra = runtimeConfig.outputInstructions.trim();
 
@@ -326,14 +318,8 @@ export async function generateAnswer(
   let usage: LLMUsage;
 
   if (provider === 'anthropic') {
-    const apiKey = process.env.ANTHROPIC_API_KEY ?? '';
     ({ content: answer, usage } = await callAnthropic(apiKey, model, systemPrompt, messages));
   } else {
-    const apiKey = process.env.OPENAI_API_KEY ?? '';
-    const baseUrl =
-      provider === 'openai-compatible'
-        ? (process.env.OPENAI_COMPATIBLE_BASE_URL ?? 'http://localhost:4000/v1').replace(/\/$/, '')
-        : 'https://api.openai.com/v1';
     ({ content: answer, usage } = await callOpenAI(baseUrl, apiKey, model, systemPrompt, messages));
   }
 

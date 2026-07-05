@@ -4,6 +4,7 @@ import fs from 'fs';
 import dotenv from 'dotenv';
 import { Command, InvalidArgumentError } from 'commander';
 import { getUserConfigDir, getUserDataDir } from './config/paths.js';
+import { resolveEmbeddingConfig } from './config/providers.js';
 import {
   initDb, listWorkspaces, addWorkspace, activateWorkspace, getIndexedFileCount, getLastIndexedAt, Workspace,
   createPublicToken, listPublicTokens, revokePublicToken,
@@ -30,10 +31,10 @@ function initDbFromEnv(): void {
 // ---------- pre-flight checks ----------
 
 function validateEmbeddingConfig(): void {
-  const provider = process.env.EMBEDDING_PROVIDER ?? 'openai';
-  if (provider === 'openai' && !process.env.OPENAI_API_KEY) {
+  const { provider, apiKey } = resolveEmbeddingConfig();
+  if (provider === 'openai' && !apiKey) {
     process.stderr.write(
-      'Error: OPENAI_API_KEY is not set.\n' +
+      'Error: EMBEDDING_API_KEY is not set.\n' +
       `Set it in ${path.join(getUserConfigDir(), '.env')} or in .env in the current directory.\n`,
     );
     process.exit(1);

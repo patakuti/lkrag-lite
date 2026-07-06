@@ -142,6 +142,11 @@ live re-index after an edit) end to end:
 |---|---|---|
 | `PUBLIC_PORT` | _(unset)_ | If set, starts a separate, network-reachable (`0.0.0.0`) read-only chat server on this port, gated by tokens issued with `lkragl token create`. Unset by default (feature disabled). See "Public Chat" below. |
 
+Not sure which Embedding/Rewriter/LLM combination to pick? See
+[docs/recommended-configs.md](docs/recommended-configs.md) for recommended
+Cloud / Local (CPU) / Local (GPU) presets for English and Japanese, with
+ready-to-paste `.env` blocks.
+
 ## Usage
 
 1. **Add a workspace**: click "+ Add..." and pick a directory

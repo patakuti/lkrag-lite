@@ -39,6 +39,21 @@ app.use((req, res, next) => {
   next();
 });
 
+// CSRF guard: the Host check above only stops DNS rebinding, not a malicious
+// page (opened in the same browser) sending simple cross-origin requests
+// (<img>, <form>, no-cors fetch) straight to this admin API. Those requests
+// cannot carry a custom header without triggering a CORS preflight, which
+// this server does not answer with any Access-Control-Allow-* headers — so
+// the browser blocks them before they reach the handler. The admin frontend
+// (public/app.js) sends this header on every /api/* call.
+app.use('/api', (req, res, next) => {
+  if (req.headers['x-lkragl-client'] !== '1') {
+    res.status(403).json({ error: 'forbidden: missing client header' });
+    return;
+  }
+  next();
+});
+
 // Health check
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString() });

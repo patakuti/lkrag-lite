@@ -14,8 +14,14 @@ import {
   listWorkspaces,
 } from '../db/sqlite.js';
 import { runtimeConfig } from '../config/runtime.js';
+import { createChatRateLimiter } from '../middleware/publicChatRateLimit.js';
 
 const router = Router();
+
+const chatRateLimit = createChatRateLimiter(
+  Number(process.env.PUBLIC_CHAT_RATE_LIMIT_PER_MIN) || 20,
+  60_000
+);
 
 function sumUsage(a: LLMUsage, b: LLMUsage): { promptTokens: number | null; completionTokens: number | null } {
   return {
@@ -79,7 +85,7 @@ router.delete('/chats', (req, res) => {
 });
 
 // POST /chat — send a message; creates a session on first call if none given
-router.post('/chat', (req, res) => {
+router.post('/chat', chatRateLimit, (req, res) => {
   void (async () => {
     const workspaceId = req.publicAuth!.workspaceId;
     const tokenId = req.publicAuth!.tokenId;

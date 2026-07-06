@@ -141,6 +141,7 @@ live re-index after an edit) end to end:
 | Variable | Default | Description |
 |---|---|---|
 | `PUBLIC_PORT` | _(unset)_ | If set, starts a separate, network-reachable (`0.0.0.0`) read-only chat server on this port, gated by tokens issued with `lkragl token create`. Unset by default (feature disabled). See "Public Chat" below. |
+| `PUBLIC_CHAT_RATE_LIMIT_PER_MIN` | `20` | Max `POST /api/chat` calls per token per rolling minute; each call bills an LLM query-rewrite + answer call, so this caps API cost exposure per token. |
 
 Not sure which Embedding/Rewriter/LLM combination to pick? See
 [docs/recommended-configs.md](docs/recommended-configs.md) for recommended

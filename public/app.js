@@ -3,7 +3,10 @@
 // ---------- API helpers ----------
 
 async function api(method, path, body) {
-  const opts = { method, headers: {} };
+  // Non-simple header: forces a CORS preflight for any cross-origin caller,
+  // which this server never answers with Access-Control-Allow-* — so a
+  // malicious page cannot reach the admin API even via a plain fetch (CSRF).
+  const opts = { method, headers: { 'X-Lkragl-Client': '1' } };
   if (body !== undefined) {
     opts.headers['Content-Type'] = 'application/json';
     opts.body = JSON.stringify(body);

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import path from 'path';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { getActiveWorkspace } from '../db/sqlite.js';
 
 const router = Router();
@@ -29,18 +29,28 @@ router.get('/', (req, res) => {
     return;
   }
 
+  // execFile never spawns a shell, so `normalized` is passed to the OS as a
+  // single literal argument regardless of characters like $(), `, &, | it
+  // may contain (CWE-78: the previous exec()-based version interpolated it
+  // into a shell command string, which bash/cmd would re-parse).
   const platform = process.platform;
-  let cmd: string;
+  let file: string;
+  let args: string[];
   if (platform === 'win32') {
-    // Use cmd /c start to open with associated app
-    cmd = `cmd /c start "" "${normalized.replace(/"/g, '\\"')}"`;
+    // rundll32's FileProtocolHandler resolves the file association the same
+    // way `cmd /c start` did, without routing the path through cmd.exe's own
+    // command-line grammar (&, |, etc.).
+    file = 'rundll32';
+    args = ['url.dll,FileProtocolHandler', normalized];
   } else if (platform === 'darwin') {
-    cmd = `open "${normalized.replace(/"/g, '\\"')}"`;
+    file = 'open';
+    args = [normalized];
   } else {
-    cmd = `xdg-open "${normalized.replace(/"/g, '\\"')}"`;
+    file = 'xdg-open';
+    args = [normalized];
   }
 
-  exec(cmd, (err) => {
+  execFile(file, args, (err) => {
     if (err) {
       res.status(500).json({ error: `Failed to open file: ${err.message}` });
       return;

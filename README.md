@@ -14,17 +14,17 @@ Hybrid BM25 + vector search is common ground now — most tools below do some ve
 | **Easy to reflect file changes** (incremental re-index) | ○ | × | × | △¹ | × | ○ |
 | **Citations open source files via OS** | ○ | × | × | × | × | △² |
 | **Embedded vector DB** (no separate DB server) | ○ | × | × | ○ | △³ | ○ |
-| **External dependencies** (services beyond the app, minimal self-hosted deploy) | 0 | 3⁴ | 4⁴ | 0 | 1³ | 0 |
+| **External dependencies** (backing services + LLM/embedding provider, default deploy path) | 1⁴ | 4⁴ | 5⁴ | 0⁴ | 2⁴ | 0⁴ |
 | **Query rewriter** (auto-rewrites follow-up questions for RAG) | ○ | △⁵ | △⁵ | × | × | × |
 | **Read-only external sharing** (link, no recipient account) | ○ | △⁶ | ×⁶ | △⁶ | × | × |
 | **End-user chat app** (vs. developer-facing API) | ○ | △ | △ | ○ | ×† | ○ |
 | **CLI tool** (search & index management for cron / editor integration) | ○ | × | × | × | △⁷ | × |
-| **Simple setup** (`npm install && npm start`) | ○ | × | × | △⁸ | △ | △⁸ |
+| **Simple setup** (`npm install`, edit `.env`, `npm start` — no Docker/multi-container stack) | ○ | × | × | △⁸ | △ | △⁸ |
 
 ¹ AnythingLLM: file-level watching only (beta); directory-wide indexing is not supported  
 ² GPT4All: clicking "Source" opens the referenced file per official docs; whether it launches the OS-associated app or an in-app viewer isn't specified  
-³ PrivateGPT: embedded/serverless only when using Qdrant's local embedded mode; the documented default self-hosted path (docker-compose) runs Qdrant as its own service, counted as 1 external dependency above  
-⁴ Default self-hosted docker-compose bundles: Dify — Postgres, Redis, Weaviate; RAGFlow — Elasticsearch/Infinity, MySQL, MinIO, Redis  
+³ PrivateGPT: embedded/serverless only when using Qdrant's local embedded mode; the documented default self-hosted path (docker-compose) runs Qdrant as its own service (see dependency count below)  
+⁴ Counts each tool's own documented/recommended getting-started path, including the LLM/embedding provider needed to actually answer a question — not just backing infrastructure. Switching to a self-hosted local model (e.g. Ollama) instead of a cloud API doesn't reduce the count; it's still one more service to run. lkrag-lite: 1 (an LLM/embedding provider — `.env.example` defaults to OpenAI, but any OpenAI-compatible endpoint including a local Ollama works the same way). Dify: 3 backing services (Postgres, Redis, Weaviate) + 1 model provider. RAGFlow: 4 backing services (Elasticsearch/Infinity, MySQL, MinIO, Redis) + 1 model provider. PrivateGPT: 1 backing service (Qdrant, default docker-compose) + 1 model provider (its own quickstart recommends a local Ollama server). AnythingLLM and GPT4All each ship a bundled local model that runs out of the box with no external account or extra service required.  
 ⁵ Dify / RAGFlow: achievable via workflow configuration, but not automatic out of the box  
 ⁶ Dify: "Anyone with the link" access mode grants full interactive app access, not scoped read-only/citation viewing. RAGFlow: only an iframe embed widget requiring an API key from an authenticated user, not a plain public link. AnythingLLM: only a website-embeddable chat widget is documented; no standalone public share-link was found  
 ⁷ PrivateGPT: CLI available but limited to basic ingestion/query; no cron-friendly index management  

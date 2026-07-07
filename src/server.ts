@@ -22,7 +22,7 @@ dotenv.config({ path: path.join(process.cwd(), '.env'), override: true, quiet: t
 validateProviderConfig();
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3456;
+const PORT = Number(process.env.PORT) || 4456;
 const DB_PATH = process.env.DATABASE_PATH ?? path.join(getUserDataDir(), 'lkrag.db');
 
 initDb(DB_PATH);

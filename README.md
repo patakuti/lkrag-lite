@@ -6,22 +6,41 @@ Lightweight, easy-to-deploy RAG (Retrieval-Augmented Generation) system for loca
 
 Most RAG tools treat your documents as data to be *imported* into a proprietary store: you upload files, the system ingests them, and if you edit the originals you must manually re-sync. lkrag-lite takes the opposite approach — **your local directory is the knowledge base**. There is no import step; the index is always a reflection of your file system.
 
-| Feature | lkrag-lite | Dify | RAGFlow | AnythingLLM | PrivateGPT |
-|---|:---:|:---:|:---:|:---:|:---:|
-| **Search local files directly** (no upload required) | ○ | × | × | △ ¹ | × |
-| **Easy to reflect file changes** (incremental re-index) | ○ | × | × | △ ¹ | × |
-| **Citations open source files via OS** | ○ | × | × | × | × |
-| **Embedded vector DB** (no separate DB server) | ○ | × | × | ○ | △ ² |
-| **Query rewriter** (auto-rewrites follow-up questions for RAG) | ○ | △ ³ | △ ³ | × | × |
-| **Chat history** (persistent, resumable across workspaces) | ○ | ○ | ○ | ○ | × |
-| **CLI tool** (search & index management for cron / editor integration) | ○ | × | × | × | △ ⁵ |
-| **Simple setup** (`npm install && npm start`) | ○ | × | × | △ ⁴ | △ |
+Hybrid BM25 + vector search is common ground now — most tools below do some version of it, so it's not a meaningful differentiator on its own. What's less crowded is the *experience*: open a browser, chat with your files, hand a read-only link to someone outside your team, and let non-engineers use it without an account, a config file, or an API key. That's the space lkrag-lite is built for.
+
+| Feature | lkrag-lite | Dify | RAGFlow | AnythingLLM | PrivateGPT † | GPT4All (LocalDocs) |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| **Search local files directly** (no upload required) | ○ | × | × | △¹ | × | ○ |
+| **Easy to reflect file changes** (incremental re-index) | ○ | × | × | △¹ | × | ○ |
+| **Citations open source files via OS** | ○ | × | × | × | × | △² |
+| **Embedded vector DB** (no separate DB server) | ○ | × | × | ○ | △³ | ○ |
+| **External dependencies** (services beyond the app, minimal self-hosted deploy) | 0 | 3⁴ | 4⁴ | 0 | 1³ | 0 |
+| **Query rewriter** (auto-rewrites follow-up questions for RAG) | ○ | △⁵ | △⁵ | × | × | × |
+| **Read-only external sharing** (link, no recipient account) | ○ | △⁶ | ×⁶ | △⁶ | × | × |
+| **End-user chat app** (vs. developer-facing API) | ○ | △ | △ | ○ | ×† | ○ |
+| **CLI tool** (search & index management for cron / editor integration) | ○ | × | × | × | △⁷ | × |
+| **Simple setup** (`npm install && npm start`) | ○ | × | × | △⁸ | △ | △⁸ |
 
 ¹ AnythingLLM: file-level watching only (beta); directory-wide indexing is not supported  
-² PrivateGPT: only when using Qdrant in local embedded mode  
-³ Dify / RAGFlow: achievable via workflow configuration, but not automatic out of the box  
-⁴ AnythingLLM: desktop app available, but initial configuration involves multiple steps  
-⁵ PrivateGPT: CLI available but limited to basic ingestion/query; no cron-friendly index management  
+² GPT4All: clicking "Source" opens the referenced file per official docs; whether it launches the OS-associated app or an in-app viewer isn't specified  
+³ PrivateGPT: embedded/serverless only when using Qdrant's local embedded mode; the documented default self-hosted path (docker-compose) runs Qdrant as its own service, counted as 1 external dependency above  
+⁴ Default self-hosted docker-compose bundles: Dify — Postgres, Redis, Weaviate; RAGFlow — Elasticsearch/Infinity, MySQL, MinIO, Redis  
+⁵ Dify / RAGFlow: achievable via workflow configuration, but not automatic out of the box  
+⁶ Dify: "Anyone with the link" access mode grants full interactive app access, not scoped read-only/citation viewing. RAGFlow: only an iframe embed widget requiring an API key from an authenticated user, not a plain public link. AnythingLLM: only a website-embeddable chat widget is documented; no standalone public share-link was found  
+⁷ PrivateGPT: CLI available but limited to basic ingestion/query; no cron-friendly index management  
+⁸ AnythingLLM: desktop app available, but initial configuration involves multiple steps. GPT4All: single-installer desktop app, but enabling LocalDocs requires several additional manual steps (enable extensions, choose embedding device, create a collection)  
+
+> **† PrivateGPT has pivoted from an end-user document-chat app to a developer-facing, Claude-API-compatible backend.** Its own docs state "the API is the actual product," and the bundled UI exists only to test the API, not as a finished end-user tool. Comparing it row-for-row above is somewhat asymmetric — treat it as the closest available reference point in a different product category, not a like-for-like alternative.
+
+## Related Projects
+
+A few smaller, concept-adjacent tools worth knowing about, even though they're not direct competitors in the same product category as the table above:
+
+- **[sebastianhutter/local-rag](https://github.com/sebastianhutter/local-rag)** — macOS menu-bar app; SQLite + Ollama; exposes search over local files as MCP tools for other agents, rather than a standalone chat UI.
+- **[pi-local-rag](https://github.com/vahidkowsari/pi-local-rag)** — hybrid BM25 + vector search (SQLite FTS5 + sqlite-vec) very close to lkrag-lite's retrieval approach, but built as an extension for the "pi" coding agent, not a standalone browser chat app.
+- **[Hermes Agent's `qmd` skill](https://github.com/NousResearch/hermes-agent/blob/main/optional-skills/research/qmd/SKILL.md)** — local hybrid (BM25 + vector + LLM rerank) retrieval over a document directory, exposed as an agent skill/MCP server rather than an end-user chat app.
+
+Each of these proves the retrieval approach (local files, hybrid search, embedded SQLite) is not unique to lkrag-lite. What's different here is the delivery: a browser-based chat UI usable by non-engineers, with read-only external sharing, rather than an MCP tool or agent extension aimed at other tools/agents.
 
 ## Features
 

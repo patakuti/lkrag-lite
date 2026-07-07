@@ -56,7 +56,7 @@ npm run build
 npm start
 ```
 
-Open http://localhost:3456 in your browser.
+Open http://localhost:4456 in your browser.
 
 ## Try it with sample data
 
@@ -133,7 +133,7 @@ live re-index after an edit) end to end:
 
 | Variable | Default | Description |
 |---|---|---|
-| `PORT` | `3456` | HTTP server port |
+| `PORT` | `4456` | HTTP server port |
 | `BROWSE_ROOT` | _(user home)_ | Top directory exposed by the file browser when adding a workspace. Restricts navigation to this directory and its subdirectories. Useful when home directory is too broad (e.g. set to `D:\Projects` on Windows or `/data` on Linux). |
 
 ### Public chat

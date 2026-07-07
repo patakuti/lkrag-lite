@@ -296,3 +296,7 @@ Public app has no admin routes mounted and skips the Host-header guard;
 every request is instead gated by a per-recipient token (middleware/publicAuth.ts)
 resolved to a single workspace, disabled unless PUBLIC_PORT is set.
 ```
+
+## License
+
+[MIT](LICENSE)

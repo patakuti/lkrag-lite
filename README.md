@@ -318,6 +318,10 @@ every request is instead gated by a per-recipient token (middleware/publicAuth.t
 resolved to a single workspace, disabled unless PUBLIC_PORT is set.
 ```
 
+## About this project
+
+This tool was designed and implemented entirely by Claude. The human provided the idea. However, this isn't a one-shot output; the human shaped it through hands-on testing and iterative, detail-oriented feedback.
+
 ## License
 
 [MIT](LICENSE)

@@ -411,6 +411,12 @@ Every chat turn is recorded in an access log (token, query, prompt/completion to
 
 If you change `EMBEDDING_MODEL` to a model with a different vector dimension, the server will return an error on the next indexing or search. Run a **full rebuild** to re-embed all documents with the new model.
 
+## Troubleshooting
+
+**`Error: LLM API unreachable at <URL>: fetch failed (ECONNREFUSED: ...)`** — the server could not connect to the LLM (answer generation) endpoint. The message includes the URL that was requested and the underlying cause (`ECONNREFUSED`: nothing is listening there, `ENOTFOUND`: the host name does not resolve, etc.). Check `LLM_PROVIDER` / `LLM_BASE_URL` in your `.env`; the resolved settings of all three roles are printed at startup as `[config]` lines. Embedding failures are reported the same way (`Embedding API unreachable at ...`).
+
+`lkragl search` only uses the embedding model, so it can succeed while the web UI fails because of the LLM or query rewriter settings. The same errors are also written to the server's stderr (`[search] request failed: ...` / `[chat] request failed: ...`), and a query rewriter failure is logged as `[rewriter] falling back to the original query: ...`.
+
 ## Development
 
 ```bash

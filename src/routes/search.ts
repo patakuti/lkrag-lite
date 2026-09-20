@@ -65,6 +65,7 @@ router.post('/', (req, res) => {
       res.json({ ...result, rewriterFallback, fileTags });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[search] request failed: ${msg}`);
       res.status(500).json({ error: msg });
     }
   })();

@@ -167,6 +167,7 @@ router.post('/chat', chatRateLimit, (req, res) => {
       res.json({ session_id: sessionId, answer, citations, rewriterFallback, fileTags });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[chat] request failed: ${msg}`);
       res.status(500).json({ error: msg });
     }
   })();

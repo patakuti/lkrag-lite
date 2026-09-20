@@ -1,5 +1,6 @@
 import { checkEmbeddingDim } from '../db/sqlite.js';
 import { resolveEmbeddingConfig } from '../config/providers.js';
+import { describeFetchError } from './fetchError.js';
 
 export type EmbeddingPurpose = 'query' | 'document';
 
@@ -24,8 +25,7 @@ async function embedBatch(
       body: JSON.stringify({ model, input }),
     });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    throw new EmbeddingApiError(`Embedding API unreachable at ${url}: ${msg}`);
+    throw new EmbeddingApiError(`Embedding API unreachable at ${url}: ${describeFetchError(err)}`);
   }
 
   if (!res.ok) {

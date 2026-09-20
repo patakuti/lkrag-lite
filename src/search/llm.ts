@@ -1,6 +1,7 @@
 import { RetrievedChunk } from './retriever.js';
 import { runtimeConfig } from '../config/runtime.js';
 import { resolveLlmConfig, resolveRewriterConfig } from '../config/providers.js';
+import { fetchLlmApi, describeFetchError } from './fetchError.js';
 
 export interface Citation {
   n: number;
@@ -78,7 +79,7 @@ async function callOpenAI(
   systemPrompt: string,
   messages: { role: string; content: string }[]
 ): Promise<{ content: string; usage: LLMUsage }> {
-  const res = await fetch(`${baseUrl}/chat/completions`, {
+  const res = await fetchLlmApi(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -106,7 +107,7 @@ async function callOpenAIStructured(
   systemPrompt: string,
   userPrompt: string
 ): Promise<{ content: string; usage: LLMUsage }> {
-  const res = await fetch(`${baseUrl}/chat/completions`, {
+  const res = await fetchLlmApi(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -165,7 +166,7 @@ async function callAnthropicStructured(
   systemPrompt: string,
   userPrompt: string
 ): Promise<{ content: string; usage: LLMUsage }> {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetchLlmApi('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -209,7 +210,7 @@ async function callAnthropic(
   systemPrompt: string,
   messages: { role: string; content: string }[]
 ): Promise<{ content: string; usage: LLMUsage }> {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetchLlmApi('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -267,10 +268,12 @@ export async function rewriteQuery(
       : null;
 
     if (!searchQuery) {
+      console.warn('[rewriter] falling back to the original query: empty search_query in the response');
       return { searchQuery: userInput, fallback: true, usage };
     }
     return { searchQuery, fallback: false, usage };
-  } catch {
+  } catch (err) {
+    console.warn(`[rewriter] falling back to the original query: ${describeFetchError(err)}`);
     return { searchQuery: userInput, fallback: true, usage: NO_USAGE };
   }
 }

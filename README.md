@@ -77,6 +77,57 @@ npm start
 
 Open http://localhost:4456 in your browser.
 
+### Restarting and auto-start
+
+Starting the server while another lkrag-lite is already running on the same `PORT` **replaces** it, so the new process picks up the current environment variables and `.env`. If the running server is busy (indexing, or answering a chat), it is left untouched and the newly started process exits with a message instead. Nothing is interrupted, and you can simply start it again later.
+
+Running the same start command again is therefore also how you restart the server (e.g. after `npm run build`). It also makes it easy to keep the server up while you are working. Pick **one** of the following; don't combine them.
+
+#### Linux (desktop): systemd user service
+
+Starts the server with your desktop session and stops it at logout, so it always runs with the current session's environment (`DISPLAY` etc.). Create `~/.config/systemd/user/lkrag-lite.service` (adjust the path to your clone):
+
+```ini
+[Unit]
+Description=lkrag-lite server
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+WorkingDirectory=%h/lkrag-lite
+ExecStart=/usr/bin/env node dist/server.js
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=graphical-session.target
+```
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now lkrag-lite
+journalctl --user -u lkrag-lite -f      # logs
+```
+
+- `WorkingDirectory` matters: `.env` is read from the current directory.
+- If `node` is not on the user manager's `PATH` (e.g. installed via nvm), replace `/usr/bin/env node` with the absolute path from `which node`.
+- After `npm run build`, run `systemctl --user restart lkrag-lite`. Starting the server by hand (`npm start`) also replaces the service's process; the service then stays stopped until the next login.
+- Do not enable `loginctl enable-linger` for this: the server is meant to run only while your desktop session exists.
+
+#### Windows + WSL1 (and other Linux setups without systemd): `~/.bashrc`
+
+WSL1 has no systemd. Instead, start the server from your shell startup file so it is up whenever a WSL terminal is open. Add this line to `~/.bashrc` (adjust the path):
+
+```bash
+(cd ~/lkrag-lite && nohup node dist/server.js >> ~/lkrag-lite.log 2>&1 &)
+```
+
+- Every new terminal runs it: if the server is idle it is replaced by a fresh one (with the current environment and `.env`); if it is busy, the new process just exits and the running server is left alone.
+- On WSL1, background processes normally end when the last terminal is closed. If a server is left running, stop it with `pkill -f 'node dist/server.js'`.
+- Logs go to `~/lkrag-lite.log`.
+- After `npm run build`, run the same command by hand to restart with the new build.
+- The Windows browser can reach the server at `http://localhost:4456`, since WSL1 shares the host network.
+
 ## Try it with sample data
 
 No documents of your own yet? [`examples/`](examples/) contains a small fictional
@@ -152,7 +203,7 @@ live re-index after an edit) end to end:
 
 | Variable | Default | Description |
 |---|---|---|
-| `PORT` | `4456` | HTTP server port |
+| `PORT` | `4456` | HTTP server port. Starting a second server on the same port replaces the running one unless it is busy (see [Restarting and auto-start](#restarting-and-auto-start)). |
 | `BROWSE_ROOT` | _(user home)_ | Top directory exposed by the file browser when adding a workspace. Restricts navigation to this directory and its subdirectories. Useful when home directory is too broad (e.g. set to `D:\Projects` on Windows or `/data` on Linux). |
 
 ### Public chat

@@ -361,21 +361,33 @@ async function resumeChat(sessionId) {
       }
     }
 
+    // Tags are not stored with citations (they can change later); look up the current ones.
+    const fileTags = wsDeleted ? {} : await lookupFileTags(
+      messages.flatMap((m) => (m.role === 'assistant' && m.citations ? JSON.parse(m.citations).map((c) => c.path) : []))
+    );
+
     // Rebuild chat thread from stored messages
     chatHistory = [];
     turnCounter = 0;
+    turnData.clear();
     document.getElementById('chat-thread').innerHTML = '';
 
+    let lastFilter = [];
     for (const msg of messages) {
       if (msg.role === 'user') {
-        appendUserBubble(msg.content);
+        lastFilter = msg.filter_tags ? JSON.parse(msg.filter_tags) : [];
+        appendUserBubble(msg.content, lastFilter);
         chatHistory.push({ role: 'user', content: msg.content });
       } else if (msg.role === 'assistant') {
         const citations = msg.citations ? JSON.parse(msg.citations) : [];
-        appendAIBubble({ answer: msg.content, citations, rewriterFallback: false });
+        appendAIBubble({ answer: msg.content, citations, rewriterFallback: false, fileTags });
         chatHistory.push({ role: 'assistant', content: msg.content });
       }
     }
+
+    // The filter of the last question stays in effect when the chat is continued
+    activeTags = wsDeleted ? [] : lastFilter;
+    renderTagFilter();
 
     updateChatTitle();
     renderChatHistory();
@@ -406,14 +418,18 @@ document.getElementById('btn-delete-all-chats').addEventListener('click', async 
 /** Each entry: { role: 'user'|'assistant', content: string } */
 let chatHistory = [];
 let turnCounter = 0;
-const turnData = new Map(); // tid → { userQuery, answer, citations }
+const turnData = new Map(); // tid → { userQuery, answer, citations, fileTags, filterTags }
 let pendingUserQuery = null;
+let pendingFilterTags = [];
 
 function clearChat() {
   chatHistory = [];
   turnCounter = 0;
   turnData.clear();
   pendingUserQuery = null;
+  pendingFilterTags = [];
+  activeTags = [];
+  renderTagFilter();
   currentSessionId = null;
   currentSessionDeleted = false;
   document.getElementById('chat-thread').innerHTML = '';
@@ -425,19 +441,27 @@ document.getElementById('btn-new-chat').addEventListener('click', () => {
   clearChat();
 });
 
-document.getElementById('search-form').addEventListener('submit', async (e) => {
+document.getElementById('search-form').addEventListener('submit', (e) => {
   e.preventDefault();
   const query = document.getElementById('search-query').value.trim();
-  if (!query) return;
+  if (!query || sending) return;
+  document.getElementById('search-query').value = '';
+  sendQuery(query);
+});
+
+// Sends one question as a new turn, applying the current tag filter.
+async function sendQuery(query) {
+  if (sending) return;
+  sending = true;
 
   const errorEl = document.getElementById('search-error');
   errorEl.classList.add('hidden');
 
   const btnSearch = document.getElementById('btn-search');
   btnSearch.disabled = true;
-  document.getElementById('search-query').value = '';
 
-  appendUserBubble(query);
+  const tags = [...activeTags];
+  appendUserBubble(query, tags);
   const thinkingEl = appendThinking();
 
   try {
@@ -456,6 +480,7 @@ document.getElementById('search-form').addEventListener('submit', async (e) => {
       history: chatHistory,
       session_id: currentSessionId,
       skip_rag: currentSessionDeleted || undefined,
+      tags: tags.length > 0 ? tags : undefined,
     });
 
     thinkingEl.remove();
@@ -470,19 +495,27 @@ document.getElementById('search-form').addEventListener('submit', async (e) => {
     errorEl.textContent = 'Error: ' + err.message;
     errorEl.classList.remove('hidden');
   } finally {
+    sending = false;
     btnSearch.disabled = false;
     document.getElementById('search-query').focus();
   }
-});
+}
 
-function appendUserBubble(text) {
+function appendUserBubble(text, tags = []) {
   pendingUserQuery = text;
+  pendingFilterTags = tags;
   const thread = document.getElementById('chat-thread');
   const turn = document.createElement('div');
   turn.className = 'chat-turn';
   const bubble = document.createElement('div');
   bubble.className = 'chat-bubble-user';
   bubble.textContent = text;
+  if (tags.length > 0) {
+    const tagBox = document.createElement('div');
+    tagBox.className = 'bubble-tags';
+    tagBox.innerHTML = tags.map((t) => `<span class="tag-chip">#${esc(t)}</span>`).join('');
+    bubble.appendChild(tagBox);
+  }
   turn.appendChild(bubble);
   thread.appendChild(turn);
   scrollChatToBottom();
@@ -498,10 +531,14 @@ function appendThinking() {
   return el;
 }
 
-function appendAIBubble({ answer, citations, rewriterFallback }) {
+function appendAIBubble({ answer, citations, rewriterFallback, fileTags }) {
   const tid = ++turnCounter;
-  turnData.set(tid, { userQuery: pendingUserQuery, answer, citations });
+  turnData.set(tid, {
+    userQuery: pendingUserQuery, answer, citations,
+    fileTags: fileTags || {}, filterTags: pendingFilterTags,
+  });
   pendingUserQuery = null;
+  pendingFilterTags = [];
   const thread = document.getElementById('chat-thread');
   const turn = document.createElement('div');
   turn.className = 'chat-turn';
@@ -524,6 +561,12 @@ function appendAIBubble({ answer, citations, rewriterFallback }) {
   copyBtn.addEventListener('click', () => copyToClipboard(turnToMarkdown(tid), copyBtn));
   turn.appendChild(copyBtn);
 
+  const related = document.createElement('div');
+  related.className = 'related-tags';
+  related.id = `related-${tid}`;
+  turn.appendChild(related);
+  renderRelatedTags(tid, related);
+
   if (citations.length > 0) {
     const details = document.createElement('details');
     details.className = 'chat-citations';
@@ -542,6 +585,7 @@ function appendAIBubble({ answer, citations, rewriterFallback }) {
           <button class="btn-open btn-link" data-path="${esc(c.path)}">Open</button>
           <button class="btn-copy-path btn-link" data-path="${esc(c.absolutePath)}">Copy</button>
         </div>
+        ${citationTagsHtml(turnData.get(tid).fileTags[c.path])}
         <div class="citation-snippet">"${esc(c.snippet)}"</div>
       </div>
     `).join('');
@@ -600,19 +644,120 @@ async function openFile(path) {
   }
 }
 
+// ---------- Tags ----------
+
+/** Tag filter applied to every question of the current chat. */
+let activeTags = [];
+let sending = false;
+
+function normalizeTagInput(raw) {
+  const tag = raw.trim().replace(/^#+/, '').normalize('NFKC').toLowerCase();
+  if (!tag || tag.length > 64 || /[\s,#]/.test(tag)) return null;
+  return tag;
+}
+
+function renderTagFilter() {
+  const box = document.getElementById('tag-filter-chips');
+  box.innerHTML = activeTags.map((t) =>
+    `<span class="tag-chip">#${esc(t)}<button type="button" class="tag-remove" data-tag="${esc(t)}" title="Remove from filter">✕</button></span>`
+  ).join('');
+  box.querySelectorAll('.tag-remove').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      activeTags = activeTags.filter((t) => t !== btn.dataset.tag);
+      renderTagFilter();
+    });
+  });
+}
+
+async function loadTagList() {
+  try {
+    const tags = await api('GET', '/tags');
+    document.getElementById('tag-list').innerHTML =
+      tags.map((t) => `<option value="${esc(t.tag)}">${esc(t.tag)} (${t.count})</option>`).join('');
+  } catch (_) {
+    // Autocomplete is optional; ignore failures
+  }
+}
+
+const tagFilterInput = document.getElementById('tag-filter-input');
+tagFilterInput.addEventListener('focus', loadTagList);
+tagFilterInput.addEventListener('change', () => {
+  const tag = normalizeTagInput(tagFilterInput.value);
+  tagFilterInput.value = '';
+  if (tag && !activeTags.includes(tag)) {
+    activeTags.push(tag);
+    renderTagFilter();
+  }
+});
+
+/** Current tags of the given paths, in batches (the server caps one request). */
+async function lookupFileTags(paths) {
+  const unique = [...new Set(paths)];
+  const fileTags = {};
+  for (let i = 0; i < unique.length; i += 200) {
+    const res = await api('POST', '/tags/lookup', { paths: unique.slice(i, i + 200) });
+    Object.assign(fileTags, res.fileTags);
+  }
+  return fileTags;
+}
+
+function citationTagsHtml(tags) {
+  if (!tags || tags.length === 0) return '';
+  return `<div class="citation-tags">${tags.map((t) => `<span class="tag-chip">#${esc(t.name)}</span>`).join('')}</div>`;
+}
+
+/** Tags of the cited files by number of files, excluding those already in the turn's filter. */
+function relatedTagsOf(data) {
+  const counts = new Map();
+  for (const path of new Set(data.citations.map((c) => c.path))) {
+    for (const t of data.fileTags[path] || []) counts.set(t.name, (counts.get(t.name) || 0) + 1);
+  }
+  for (const t of data.filterTags) counts.delete(t);
+  return [...counts].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).slice(0, 10);
+}
+
+function renderRelatedTags(tid, el = document.getElementById(`related-${tid}`)) {
+  const data = turnData.get(tid);
+  if (!el || !data) return;
+  const related = relatedTagsOf(data);
+  if (related.length === 0) {
+    el.innerHTML = '';
+    return;
+  }
+  el.innerHTML = 'Related tags: ' + related.map(([name, count]) =>
+    `<button type="button" class="tag-chip" data-tag="${esc(name)}" title="Ask the same question again, limited to documents with this tag">#${esc(name)} <span class="tag-count">${count}</span></button>`
+  ).join('');
+  el.querySelectorAll('button.tag-chip').forEach((btn) => {
+    btn.addEventListener('click', () => retryWithTag(tid, btn.dataset.tag));
+  });
+}
+
+/** Adds the tag to the filter and asks the turn's question again as a new turn (the old answer stays). */
+function retryWithTag(tid, tag) {
+  const data = turnData.get(tid);
+  if (sending || !data || !data.userQuery) return;
+  if (!activeTags.includes(tag)) activeTags.push(tag);
+  renderTagFilter();
+  sendQuery(data.userQuery);
+}
+
 // ---------- Copy to Clipboard ----------
 
 function turnToMarkdown(tid) {
   const data = turnData.get(tid);
   if (!data) return '';
   let md = `**You:** ${data.userQuery || ''}\n\n`;
+  if (data.filterTags && data.filterTags.length > 0) {
+    md += `**Tag filter:** ${data.filterTags.map((t) => '#' + t).join(' ')}\n\n`;
+  }
   md += `**Assistant:**\n${data.answer}`;
   if (data.citations && data.citations.length > 0) {
     md += '\n\n**References:**\n';
     data.citations.forEach((c) => {
       const absPath = c.absolutePath.replace(/\\/g, '/');
       const fileUrl = absPath.startsWith('/') ? `file://${absPath}` : `file:///${absPath}`;
-      md += `- [${c.n}] [${c.path}](${fileUrl}) (score: ${c.score})\n  > "${c.snippet}"\n`;
+      const tags = (data.fileTags[c.path] || []).map((t) => '#' + t.name).join(' ');
+      md += `- [${c.n}] [${c.path}](${fileUrl}) (score: ${c.score})${tags ? ' ' + tags : ''}\n  > "${c.snippet}"\n`;
     });
   }
   return md;

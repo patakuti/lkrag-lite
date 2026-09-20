@@ -42,7 +42,7 @@ router.post('/', (req, res) => {
 
     try {
       if (sessionId) {
-        appendChatMessage(sessionId, 'user', query.trim(), null);
+        appendChatMessage(sessionId, 'user', query.trim(), null, filterTags);
       }
 
       const { searchQuery, fallback: rewriterFallback } = await rewriteQuery(

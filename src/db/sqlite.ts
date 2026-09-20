@@ -98,6 +98,7 @@ export function initDb(dbPath: string): Database.Database {
 
   createSchema(db);
   migrateChatSessionsTokenId(db);
+  migrateChatMessagesFilterTags(db);
   syncFtsTable(db);
   _db = db;
   return db;
@@ -109,6 +110,15 @@ function migrateChatSessionsTokenId(db: Database.Database): void {
   const cols = db.prepare('PRAGMA table_info(chat_sessions)').all() as { name: string }[];
   if (!cols.some((c) => c.name === 'token_id')) {
     db.exec('ALTER TABLE chat_sessions ADD COLUMN token_id INTEGER REFERENCES public_tokens(id) ON DELETE SET NULL');
+  }
+}
+
+// filter_tags records the tag filter that was applied to a user message (D46);
+// added by migration for databases created before tag support.
+function migrateChatMessagesFilterTags(db: Database.Database): void {
+  const cols = db.prepare('PRAGMA table_info(chat_messages)').all() as { name: string }[];
+  if (!cols.some((c) => c.name === 'filter_tags')) {
+    db.exec('ALTER TABLE chat_messages ADD COLUMN filter_tags TEXT');
   }
 }
 
@@ -626,6 +636,7 @@ export interface ChatMessage {
   role: string;
   content: string;
   citations: string | null;
+  filter_tags: string | null;
   created_at: number;
 }
 
@@ -692,13 +703,14 @@ export function appendChatMessage(
   sessionId: string,
   role: string,
   content: string,
-  citations: string | null
+  citations: string | null,
+  filterTags: string[] = []
 ): void {
   const now = Date.now();
   const db = getDb();
   db.prepare(
-    'INSERT INTO chat_messages (session_id, role, content, citations, created_at) VALUES (?, ?, ?, ?, ?)'
-  ).run(sessionId, role, content, citations, now);
+    'INSERT INTO chat_messages (session_id, role, content, citations, filter_tags, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(sessionId, role, content, citations, filterTags.length > 0 ? JSON.stringify(filterTags) : null, now);
   db.prepare('UPDATE chat_sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
 }
 

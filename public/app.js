@@ -585,10 +585,12 @@ function appendAIBubble({ answer, citations, rewriterFallback, fileTags }) {
           <button class="btn-open btn-link" data-path="${esc(c.path)}">Open</button>
           <button class="btn-copy-path btn-link" data-path="${esc(c.absolutePath)}">Copy</button>
         </div>
-        ${citationTagsHtml(turnData.get(tid).fileTags[c.path])}
+        <div class="citation-tags" data-tid="${tid}" data-n="${c.n}" data-path="${esc(c.path)}"></div>
         <div class="citation-snippet">"${esc(c.snippet)}"</div>
       </div>
     `).join('');
+
+    inner.querySelectorAll('.citation-tags').forEach((el) => renderCitationTags(el));
 
     inner.querySelectorAll('.btn-open').forEach((btn) => {
       btn.addEventListener('click', () => openFile(btn.dataset.path));
@@ -701,9 +703,66 @@ async function lookupFileTags(paths) {
   return fileTags;
 }
 
-function citationTagsHtml(tags) {
-  if (!tags || tags.length === 0) return '';
-  return `<div class="citation-tags">${tags.map((t) => `<span class="tag-chip">#${esc(t.name)}</span>`).join('')}</div>`;
+/** Tag chips of one reference: manual tags (✕ to remove) and a "+ tag" input to add one. */
+function renderCitationTags(el) {
+  const path = el.dataset.path;
+  const data = turnData.get(Number(el.dataset.tid));
+  const tags = (data && data.fileTags[path]) || [];
+  el.innerHTML = tags.map((t) => {
+    const manual = t.sources.includes('manual');
+    return `<span class="tag-chip${manual ? ' manual' : ''}">#${esc(t.name)}${
+      manual ? `<button type="button" class="tag-remove" data-tag="${esc(t.name)}" title="Remove manual tag">✕</button>` : ''
+    }</span>`;
+  }).join('') + '<input class="tag-add-input" list="tag-list" placeholder="+ tag" autocomplete="off" />';
+
+  el.querySelectorAll('.tag-remove').forEach((btn) => {
+    btn.addEventListener('click', () => removeManualTag(path, btn.dataset.tag));
+  });
+  const input = el.querySelector('.tag-add-input');
+  input.addEventListener('focus', loadTagList);
+  input.addEventListener('change', () => {
+    const tag = normalizeTagInput(input.value);
+    input.value = '';
+    if (tag) addManualTag(path, tag);
+  });
+}
+
+/** Store the file's new tags in every turn showing it and re-render those references and related tags. */
+function applyFileTags(path, tags) {
+  for (const [tid, data] of turnData) {
+    if (data.citations.some((c) => c.path === path)) {
+      data.fileTags[path] = tags;
+      renderRelatedTags(tid);
+    }
+  }
+  document.querySelectorAll('.citation-tags').forEach((el) => {
+    if (el.dataset.path === path) renderCitationTags(el);
+  });
+  loadTagList();
+}
+
+function showTagError(err) {
+  const errorEl = document.getElementById('search-error');
+  errorEl.textContent = 'Error: ' + err.message;
+  errorEl.classList.remove('hidden');
+}
+
+async function addManualTag(path, tag) {
+  try {
+    const res = await api('POST', '/tags/manual', { path, tag });
+    applyFileTags(path, res.tags);
+  } catch (err) {
+    showTagError(err);
+  }
+}
+
+async function removeManualTag(path, tag) {
+  try {
+    await api('DELETE', '/tags/manual', { path, tag });
+    applyFileTags(path, (await lookupFileTags([path]))[path] || []);
+  } catch (err) {
+    showTagError(err);
+  }
 }
 
 /** Tags of the cited files by number of files, excluding those already in the turn's filter. */

@@ -54,7 +54,7 @@ Each of these proves the retrieval approach (local files, hybrid search, embedde
 - **Runtime settings UI**: adjust Top K, Min Similarity, and Output Instructions from the browser without restarting the server
 - **Multi-turn chat**: conversational UI that carries context across turns
 - **Query rewriter**: LLM automatically rewrites follow-up questions into clean, standalone RAG search queries
-- **Document tags**: tags come from the files themselves (Markdown frontmatter / `#tag`) or are added by hand in the UI (any file type, e.g. PDF/Office); see related tags for each answer, filter searches by tag, and re-ask a question limited to a tag (see [Document Tags](#document-tags))
+- **Document tags**: tags come from the files themselves (Markdown frontmatter / `#tag`), from the path (`ext:pdf`, `dir:<folder>`), or are added by hand in the UI (any file type, e.g. PDF/Office); see related tags for each answer, require or exclude tags in a search, re-ask a question limited to (or without) a tag, and set default required/excluded tags in `.env` — enforced for the public chat (see [Document Tags](#document-tags))
 - **Chat history**: chats are auto-saved to SQLite and can be resumed at any time; history is shown across all workspaces
 - **CLI tool** (`lkragl`): command-line interface for search and index management, suitable for cron jobs, editor integrations, and automation
 - **Public chat**: token-authenticated, read-only chat UI for sharing a single workspace with other people, served on a separate network-reachable port (see [Public Chat](#public-chat))
@@ -190,6 +190,8 @@ live re-index after an edit) end to end:
 | `RAG_TOP_K` | `5` | Number of chunks to retrieve (overridable from UI) |
 | `RAG_MIN_SIMILARITY` | `0.3` | Minimum cosine similarity score 0–1 applied to vector results before RRF merge (overridable from UI) |
 | `RAG_OUTPUT_INSTRUCTIONS` | _(empty)_ | Extra instructions appended to the LLM system prompt, e.g. `"Answer in Japanese."` (overridable from UI) |
+| `RAG_DEFAULT_REQUIRED_TAGS` | _(empty)_ | Comma-separated tags every search requires by default (see [Document Tags](#document-tags)). Read at startup; restart to change |
+| `RAG_DEFAULT_EXCLUDE_TAGS` | _(empty)_ | Comma-separated tags whose documents every search skips by default, e.g. `obsolete,dir:archive`. Enforced for the public chat. Read at startup; restart to change |
 
 ### Query Rewriter
 
@@ -234,12 +236,13 @@ ready-to-paste `.env` blocks.
 
 ## Document Tags
 
-Tags let you group documents and narrow a search to a group. There are two kinds:
+Tags let you group documents, narrow a search to a group, and leave a group out. There are three kinds:
 
 | Kind | Source | Editable |
 |---|---|---|
 | **File tags** (blue) | Markdown (`.md`) only: frontmatter `tags:` / `tag:` (inline list, block list, or comma/space-separated) and inline `#tag` in the text. Tags inside code blocks / inline code, headings, URL fragments (`page#section`) and numbers-only (`#123`) are ignored. | Edit the file, then run "Update". |
 | **Manual tags** (amber) | Added in the UI on any indexed file — including PDF, Word, Excel, PowerPoint, HTML and plain text. Stored only in lkrag-lite's database; your files are never modified. | Add / remove in the UI |
+| **System tags** (grey) | Derived from the file's path for every indexed file: `ext:<extension>` (lower-case, e.g. `ext:pdf`, `ext:md`) and `dir:<top-level folder>` (e.g. `dir:設計`; files directly in the workspace root get no `dir:` tag; whitespace, `,` and `#` in the folder name become `-`). | No — they follow the path automatically |
 
 ```markdown
 ---
@@ -249,11 +252,32 @@ Body text with an inline #draft tag.
 ```
 
 - **Normalization**: tags are trimmed, lower-cased and NFKC-normalized (`Design` and `design` are the same tag). A tag is 1–64 characters with no whitespace, `,` or `#`. `a/b` is just one string; there is no hierarchy.
-- **In the chat UI**: each reference shows its file's tags. Type in a reference's `+ tag` box to add a manual tag (autocomplete offers existing tags) and click `✕` on a manual tag to remove it. Below each answer, **Related tags** lists the tags of the cited documents (with the number of documents); clicking one adds it to the filter and asks the same question again as a new turn, keeping the previous answer for comparison.
-- **Tag filter**: the row above the input box limits every question in the current chat to documents that have **all** the listed tags (AND). The filter is applied before ranking, so Top K is filled from the matching documents. It is saved with the question and restored when you resume the chat; "New Chat" clears it.
-- **Existing indexes**: file tags are picked up by the next "Update" without re-embedding. Manual tags survive "Update" and "Full Rebuild".
-- **Renames and moves**: manual tags are attached to the file's path relative to the workspace, so renaming or moving a file detaches them (moving it back reattaches them). Deleting a workspace deletes its manual tags.
-- **Public chat**: viewers can see tags, related tags and filter/retry by tag, but cannot add or remove manual tags (that is admin-only). Note that all tag names of the workspace are visible to viewers.
+- **Reserved prefixes**: `ext:` and `dir:` belong to system tags. A document or a manual tag cannot use them (the tag is ignored / rejected), so a system tag can always be trusted in a filter.
+- **In the chat UI**: each reference shows its file's tags (system tags last, greyed out, not removable). Type in a reference's `+ tag` box to add a manual tag (autocomplete offers existing tags) and click `✕` on a manual tag to remove it. Below each answer, **Related tags** lists the tags of the cited documents (with the number of documents; system tags are left out to avoid noise). Click a tag to ask the same question again limited to it, or click the `−` next to it to ask again *excluding* it. The new turn is added and the previous answer stays for comparison.
+- **Tag filter**: the row above the input box limits every question in the current chat.
+  - `tag` requires it: a document must have **all** required tags (AND).
+  - `-tag` excludes it: a document with **any** excluded tag is skipped (excluded tags are red `−#tag` chips). A tag that is both required and excluded matches nothing (exclusion wins); adding it to one list removes it from the other.
+  - Any tag works, including system tags — e.g. `-dir:archive` or `ext:pdf`.
+  - The filter is applied before ranking, so Top K is filled from the matching documents. It is saved with the question and restored when you resume the chat; "New Chat" resets it to the defaults below.
+- **Default conditions (`.env`)**: `RAG_DEFAULT_REQUIRED_TAGS` and `RAG_DEFAULT_EXCLUDE_TAGS` (comma-separated), e.g. `RAG_DEFAULT_EXCLUDE_TAGS=obsolete,dir:archive`.
+  - Admin UI: they are the starting filter of every new chat, shown as chips you can remove for that chat. Resuming a chat restores exactly what was saved for it.
+  - CLI: `lkragl search` applies them unless `--no-default-tags` is given.
+  - They are read when the server starts (restart after changing; "Reload .env" does not apply). The server and the CLI refuse to start if an entry is invalid (e.g. contains whitespace) or a tag is in both lists, rather than silently ignoring it.
+  - **Public chat: enforced** — see below.
+- **Existing indexes**: file and system tags are picked up by the next "Update" without re-embedding. Manual tags survive "Update" and "Full Rebuild".
+- **Renames and moves**: manual tags are attached to the file's path relative to the workspace, so renaming or moving a file detaches them (moving it back reattaches them). System tags follow the new path automatically. Deleting a workspace deletes its manual tags.
+- **Public chat**: viewers can see tags and related tags, and require / exclude tags, but cannot add or remove manual tags (admin-only).
+
+### Hiding documents from the public chat
+
+The default conditions are **enforced on the server** for the public chat, so they can be used to keep documents (e.g. `RAG_DEFAULT_EXCLUDE_TAGS=obsolete,internal`) away from the people you share a workspace with:
+
+- Every search adds the condition; a viewer cannot remove or override it (an excluded tag wins over anything they require). The chat UI shows the condition as dashed 🔒 chips that have no `✕`.
+- A document that does not pass the condition is `404` on `GET /api/file` (view and download), even if the path is guessed. When a condition is set, files that are not in the index are `404` too.
+- The tag list and tag lookup only report tags (and counts) of documents that pass the condition, so tag names of hidden documents are not revealed.
+- The admin UI, admin API and CLI are not restricted.
+
+> **Note:** the condition applies to searches, files and tags from the moment the server runs with it. Chat history that was saved *before* you added a condition still contains the answers and citations from earlier searches, which can include documents you now hide. Delete the public chat histories first (recipients can use "Delete All" in the Chat History panel) or revoke and re-issue the tokens before relying on a new condition. The condition itself (e.g. `−#obsolete`) is visible to viewers.
 
 ## CLI Tool (`lkragl`)
 
@@ -303,6 +327,8 @@ lkragl tags                 List document tags with the number of documents
 | `--limit <n>` | 5 | Number of search results (`search` only) |
 | `--min-similarity <n>` | 0.3 | Minimum similarity score 0–1 (`search` only) |
 | `--tag <tag>` | — | Only documents having this tag; repeat to require several (AND) (`search` only) |
+| `--exclude-tag <tag>` | — | Skip documents having this tag; repeat to exclude several (`search` only) |
+| `--no-default-tags` | — | Ignore `RAG_DEFAULT_REQUIRED_TAGS` / `RAG_DEFAULT_EXCLUDE_TAGS` (`search` only) |
 | `--format <fmt>` | plain | Output format: `plain`, `tsv`, `json` (`search` only); `plain`/`json` for `tags` |
 | `--quiet` | — | Suppress informational messages on stderr |
 | `--env-file <path>` | — | Load additional .env file |
@@ -329,11 +355,17 @@ lkragl search "authentication flow" --workspace-path /path/to/docs
 # Search from a subdirectory — finds the nearest indexed ancestor automatically
 lkragl search "error handling" --find-workspace
 
-# TSV output for editor integration (path, line, score, content, tags)
+# TSV output for editor integration (path, line, score, content, tags; the tags column includes system tags)
 lkragl search "setup guide" --format tsv --limit 10
 
-# Only documents tagged both "design" and "auth"
-lkragl search "token refresh" --tag design --tag auth
+# Only documents tagged both "design" and "auth", but not "obsolete"
+lkragl search "token refresh" --tag design --tag auth --exclude-tag obsolete
+
+# Only PDFs in the top-level "manuals" folder (system tags)
+lkragl search "warranty" --tag ext:pdf --tag dir:manuals
+
+# Ignore the default conditions from .env for this search
+lkragl search "old design" --no-default-tags
 
 # List tags and how many documents have each
 lkragl tags
@@ -369,7 +401,7 @@ lkragl token revoke <id>                                          # disable a to
 
 Deleting a workspace revokes all of its tokens.
 
-Share `http://<host>:<PUBLIC_PORT>/?token=<token>` with the recipient. The page exchanges the token for an `HttpOnly` cookie on first load (redirecting to a clean URL), so the token itself doesn't stay visible or need to be resent. The UI supports multi-turn chat (with the same query rewriter as the admin UI) and a "Chat History" panel scoped to that token's workspace; citations link to `GET /api/file?path=...` to view the source file in the browser, or `&download=1` to download it — there is no workspace switching, index management, or settings, and no ability to delete chat history from this UI. Recipients can see document tags, related tags and filter by tag (see [Document Tags](#document-tags)), but cannot edit tags.
+Share `http://<host>:<PUBLIC_PORT>/?token=<token>` with the recipient. The page exchanges the token for an `HttpOnly` cookie on first load (redirecting to a clean URL), so the token itself doesn't stay visible or need to be resent. The UI supports multi-turn chat (with the same query rewriter as the admin UI) and a "Chat History" panel scoped to that token's workspace; citations link to `GET /api/file?path=...` to view the source file in the browser, or `&download=1` to download it — there is no workspace switching, index management, or settings, and no ability to delete chat history from this UI. Recipients can see document tags, related tags and require / exclude tags (see [Document Tags](#document-tags)), but cannot edit tags. `RAG_DEFAULT_REQUIRED_TAGS` / `RAG_DEFAULT_EXCLUDE_TAGS` are enforced for them — see [Hiding documents from the public chat](#hiding-documents-from-the-public-chat).
 
 > **Note:** `PUBLIC_PORT` serves plain HTTP with no built-in TLS — the token travels in cleartext over the network (in the URL on first load, then in a cookie). If recipients are not on a trusted LAN/VPN, put a TLS-terminating reverse proxy (nginx, Caddy, cloudflared, etc.) in front of it.
 

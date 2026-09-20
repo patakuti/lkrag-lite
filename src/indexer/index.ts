@@ -12,9 +12,9 @@ import { chunk, makeSnippet } from './chunker.js';
 import {
   getFile, upsertFile, listFileIds, deleteFile,
   deleteChunksByFile, insertChunk, insertVec, insertFts,
-  clearWorkspaceIndex, getActiveWorkspace, replaceFileTags, Workspace,
+  clearWorkspaceIndex, getActiveWorkspace, replaceFileTags, replaceSystemTags, Workspace,
 } from '../db/sqlite.js';
-import { extractMarkdownTags } from './tags.js';
+import { extractMarkdownTags, systemTagsForPath } from './tags.js';
 import { embed, EmbeddingApiError } from '../search/embedding.js';
 
 // ---------- types ----------
@@ -161,8 +161,9 @@ async function indexWorkspace(workspaceId: number, wsPath: string, rebuild: bool
 
       // Tags are re-derived on every run (not only when changed) so that
       // indexes built before tag support pick them up without a rebuild.
+      const fileId = getFile(workspaceId, relPath)!.id;
+      replaceSystemTags(fileId, systemTagsForPath(relPath));
       if (path.extname(relPath).toLowerCase() === '.md') {
-        const fileId = getFile(workspaceId, relPath)!.id;
         replaceFileTags(fileId, extractMarkdownTags(fs.readFileSync(absPath, 'utf-8')));
       }
     } catch (err: unknown) {

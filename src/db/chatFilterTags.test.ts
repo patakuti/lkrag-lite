@@ -16,14 +16,16 @@ describe('chat_messages.filter_tags', () => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lkrag-chat-'));
     initDb(path.join(dir, 't.db'));
     createChatSession('s1', null, 'title');
-    appendChatMessage('s1', 'user', 'q1', null, ['a', '設計']);
+    appendChatMessage('s1', 'user', 'q1', null, { include: ['a', '設計'], exclude: ['obsolete'] });
     appendChatMessage('s1', 'user', 'q2', null);
     const msgs = getChatMessages('s1');
     expect(JSON.parse(msgs[0].filter_tags!)).toEqual(['a', '設計']);
+    expect(JSON.parse(msgs[0].filter_exclude_tags!)).toEqual(['obsolete']);
     expect(msgs[1].filter_tags).toBeNull();
+    expect(msgs[1].filter_exclude_tags).toBeNull();
   });
 
-  it('is added to a pre-existing chat_messages table without it', () => {
+  it('are added to a pre-existing chat_messages table without them', () => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lkrag-chat-'));
     const file = path.join(dir, 'old.db');
     const old = new Database(file);
@@ -39,9 +41,11 @@ describe('chat_messages.filter_tags', () => {
     old.close();
 
     initDb(file);
-    appendChatMessage('s', 'user', 'new', null, ['x']);
+    appendChatMessage('s', 'user', 'new', null, { include: ['x'], exclude: ['y'] });
     const msgs = getChatMessages('s');
     expect(msgs[0].filter_tags).toBeNull();
+    expect(msgs[0].filter_exclude_tags).toBeNull();
     expect(JSON.parse(msgs[1].filter_tags!)).toEqual(['x']);
+    expect(JSON.parse(msgs[1].filter_exclude_tags!)).toEqual(['y']);
   });
 });

@@ -4,7 +4,7 @@ import os from 'os';
 import path from 'path';
 import {
   initDb, ensureVecTable, addWorkspace, upsertFile, deleteFile, clearWorkspaceIndex, deleteWorkspace,
-  replaceFileTags, listTags, getTagsForPaths, addManualTag, removeManualTag, fileExists,
+  replaceFileTags, replaceSystemTags, listTags, getTagsForPaths, addManualTag, removeManualTag, fileExists, getDb,
 } from './sqlite.js';
 
 let dir: string;
@@ -108,5 +108,51 @@ describe('getTagsForPaths', () => {
   it('returns an empty entry for unknown paths', () => {
     expect(getTagsForPaths(wsId, ['missing.md'])).toEqual({ 'missing.md': [] });
     expect(getTagsForPaths(wsId, [])).toEqual({});
+  });
+});
+
+describe('system tags', () => {
+  it('appear with source "system" and cascade with the file', () => {
+    const id = file('docs/a.pdf');
+    replaceSystemTags(id, ['ext:pdf', 'dir:docs']);
+    expect(getTagsForPaths(wsId, ['docs/a.pdf'])['docs/a.pdf']).toEqual([
+      { name: 'dir:docs', sources: ['system'] },
+      { name: 'ext:pdf', sources: ['system'] },
+    ]);
+    expect(listTags(wsId).map((t) => t.tag)).toEqual(['dir:docs', 'ext:pdf']);
+    deleteFile(id);
+    expect(listTags(wsId)).toEqual([]);
+  });
+
+  it('replaceSystemTags replaces the set and is independent of file tags', () => {
+    const id = file('a.md');
+    replaceFileTags(id, ['x']);
+    replaceSystemTags(id, ['ext:md']);
+    replaceSystemTags(id, ['ext:txt']);
+    expect(getTagsForPaths(wsId, ['a.md'])['a.md']).toEqual([
+      { name: 'ext:txt', sources: ['system'] },
+      { name: 'x', sources: ['file'] },
+    ]);
+  });
+
+  it('manual tags with a reserved prefix are ignored by the view', () => {
+    file('a.md');
+    addManualTag(wsId, 'a.md', 'ext:fake');
+    addManualTag(wsId, 'a.md', 'dir:fake');
+    addManualTag(wsId, 'a.md', 'real');
+    expect(getTagsForPaths(wsId, ['a.md'])['a.md']).toEqual([{ name: 'real', sources: ['manual'] }]);
+  });
+
+  it('an old view definition (without system tags) is replaced on init', () => {
+    const id = file('a.md');
+    replaceSystemTags(id, ['ext:md']);
+    const db = getDb();
+    db.exec(`
+      DROP VIEW v_file_tags;
+      CREATE VIEW v_file_tags AS SELECT file_id, tag, 'file' AS source FROM file_tags;
+    `);
+    expect(getTagsForPaths(wsId, ['a.md'])['a.md']).toEqual([]);
+    initDb(path.join(dir, 'test.db'));
+    expect(getTagsForPaths(wsId, ['a.md'])['a.md']).toEqual([{ name: 'ext:md', sources: ['system'] }]);
   });
 });

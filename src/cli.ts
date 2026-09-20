@@ -9,7 +9,8 @@ import {
   initDb, listWorkspaces, addWorkspace, activateWorkspace, getIndexedFileCount, getLastIndexedAt, Workspace,
   createPublicToken, listPublicTokens, revokePublicToken, listTags, getTagsForPaths,
 } from './db/sqlite.js';
-import { normalizeTag } from './indexer/tags.js';
+import { normalizeTag, mergeTagFilters } from './indexer/tags.js';
+import { getDefaultTagFilter, validateTagDefaults } from './config/tagDefaults.js';
 import { runUpdateForWorkspace, runRebuildForWorkspace, getStatus, requestCancel } from './indexer/index.js';
 import { retrieveForWorkspace, RetrievedChunk } from './search/retriever.js';
 
@@ -160,6 +161,12 @@ const sharedOptions = (cmd: Command) =>
 
 // ---------- search ----------
 
+function collectTag(v: string, prev: string[]): string[] {
+  const tag = normalizeTag(v);
+  if (tag === null) throw new InvalidArgumentError('Invalid tag (must be 1-64 chars, no whitespace, commas or #).');
+  return prev.includes(tag) ? prev : [...prev, tag];
+}
+
 sharedOptions(
   program
     .command('search <query>')
@@ -174,23 +181,31 @@ sharedOptions(
       if (isNaN(n) || n < 0 || n > 1) throw new InvalidArgumentError('Must be a number between 0 and 1.');
       return n;
     }, 0.3)
-    .option('--tag <tag>', 'only documents having this tag (repeatable; all given tags are required)', (v: string, prev: string[]) => {
-      const tag = normalizeTag(v);
-      if (tag === null) throw new InvalidArgumentError('Invalid tag (must be 1-64 chars, no whitespace, commas or #).');
-      return prev.includes(tag) ? prev : [...prev, tag];
-    }, [] as string[])
+    .option('--tag <tag>', 'only documents having this tag (repeatable; all given tags are required)', collectTag, [] as string[])
+    .option('--exclude-tag <tag>', 'skip documents having this tag (repeatable; any of the given tags excludes)', collectTag, [] as string[])
+    .option('--no-default-tags', 'ignore RAG_DEFAULT_REQUIRED_TAGS / RAG_DEFAULT_EXCLUDE_TAGS')
     .option('--format <fmt>', 'output format: plain, tsv, json', 'plain')
 ).action(async (query: string, opts) => {
   if (opts.envFile) loadEnvFile(opts.envFile);
   validateEmbeddingConfig();
+  validateTagDefaults();
   initDbFromEnv();
   const ws = resolveWorkspace(opts, 'require');
   if (!opts.quiet) process.stderr.write(`Searching workspace "${ws.name}" (${ws.path})...\n`);
 
+  // Defaults from .env (unless --no-default-tags) plus --tag / --exclude-tag; exclusion wins
+  const defaults = opts.defaultTags ? getDefaultTagFilter() : { include: [], exclude: [] };
+  const filter = mergeTagFilters(defaults, { include: opts.tag, exclude: opts.excludeTag });
+  if (!opts.quiet && (defaults.include.length > 0 || defaults.exclude.length > 0)) {
+    process.stderr.write(
+      `Default tag filter: ${[...defaults.include.map((t) => `#${t}`), ...defaults.exclude.map((t) => `-#${t}`)].join(' ')} (--no-default-tags to disable)\n`
+    );
+  }
+
   const results = await retrieveForWorkspace(query, ws.id, {
     topK: opts.limit,
     minSimilarity: opts.minSimilarity,
-    tags: opts.tag,
+    filter,
   });
 
   const fileTags = getTagsForPaths(ws.id, results.map((r) => r.filePath));

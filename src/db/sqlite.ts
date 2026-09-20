@@ -4,6 +4,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import Database from 'better-sqlite3';
 import * as sqliteVec from 'sqlite-vec';
+import type { TagFilter } from '../indexer/tags.js';
 
 // When running as a pkg standalone binary, the sqlite-vec native extension
 // (.so/.dll/.dylib) lives in pkg's virtual FS and cannot be dlopen()ed directly.
@@ -99,6 +100,7 @@ export function initDb(dbPath: string): Database.Database {
   createSchema(db);
   migrateChatSessionsTokenId(db);
   migrateChatMessagesFilterTags(db);
+  refreshTagView(db);
   syncFtsTable(db);
   _db = db;
   return db;
@@ -113,13 +115,35 @@ function migrateChatSessionsTokenId(db: Database.Database): void {
   }
 }
 
-// filter_tags records the tag filter that was applied to a user message (D46);
-// added by migration for databases created before tag support.
+// filter_tags / filter_exclude_tags record the tag filter that was applied to a
+// user message (D46, D54); added by migration for databases created before them.
 function migrateChatMessagesFilterTags(db: Database.Database): void {
   const cols = db.prepare('PRAGMA table_info(chat_messages)').all() as { name: string }[];
-  if (!cols.some((c) => c.name === 'filter_tags')) {
-    db.exec('ALTER TABLE chat_messages ADD COLUMN filter_tags TEXT');
+  for (const col of ['filter_tags', 'filter_exclude_tags']) {
+    if (!cols.some((c) => c.name === col)) {
+      db.exec(`ALTER TABLE chat_messages ADD COLUMN ${col} TEXT`);
+    }
   }
+}
+
+// The view's definition changed when system tags were added, and CREATE VIEW
+// IF NOT EXISTS would keep an old one; recreate it atomically on every start
+// (other processes, e.g. the CLI, may be reading meanwhile).
+function refreshTagView(db: Database.Database): void {
+  db.transaction(() => {
+    db.exec(`
+      DROP VIEW IF EXISTS v_file_tags;
+      CREATE VIEW v_file_tags AS
+        SELECT file_id, tag, 'file' AS source FROM file_tags
+        UNION ALL
+        SELECT file_id, tag, 'system' AS source FROM system_tags
+        UNION ALL
+        SELECT f.id AS file_id, m.tag, 'manual' AS source
+        FROM manual_tags m
+        JOIN files f ON f.workspace_id = m.workspace_id AND f.path = m.path
+        WHERE m.tag NOT LIKE 'ext:%' AND m.tag NOT LIKE 'dir:%';
+    `);
+  })();
 }
 
 function createSchema(db: Database.Database): void {
@@ -229,12 +253,12 @@ function createSchema(db: Database.Database): void {
       PRIMARY KEY (workspace_id, path, tag)
     );
 
-    CREATE VIEW IF NOT EXISTS v_file_tags AS
-      SELECT file_id, tag, 'file' AS source FROM file_tags
-      UNION ALL
-      SELECT f.id AS file_id, m.tag, 'manual' AS source
-      FROM manual_tags m
-      JOIN files f ON f.workspace_id = m.workspace_id AND f.path = m.path;
+    -- System tags (ext:/dir:) derived from the path; regenerated on every index run.
+    CREATE TABLE IF NOT EXISTS system_tags (
+      file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+      tag     TEXT    NOT NULL,
+      PRIMARY KEY (file_id, tag)
+    );
   `);
 }
 
@@ -396,56 +420,84 @@ export function deleteFile(fileId: number): void {
 
 // ---------- tags ----------
 
-export type TagSource = 'file' | 'manual';
+export type TagSource = 'file' | 'manual' | 'system';
 
 export interface FileTag {
   name: string;
   sources: TagSource[];
 }
 
-/** Replace the automatic (file-derived) tags of a file; writes only when they differ. */
-export function replaceFileTags(fileId: number, tags: string[]): void {
+function replaceTagRows(table: 'file_tags' | 'system_tags', fileId: number, tags: string[]): void {
   const db = getDb();
   const current = new Set(
-    (db.prepare('SELECT tag FROM file_tags WHERE file_id = ?').all(fileId) as { tag: string }[]).map((r) => r.tag)
+    (db.prepare(`SELECT tag FROM ${table} WHERE file_id = ?`).all(fileId) as { tag: string }[]).map((r) => r.tag)
   );
   const next = new Set(tags);
   if (current.size === next.size && [...next].every((t) => current.has(t))) return;
 
   const replace = db.transaction(() => {
-    db.prepare('DELETE FROM file_tags WHERE file_id = ?').run(fileId);
-    const ins = db.prepare('INSERT INTO file_tags (file_id, tag) VALUES (?, ?)');
+    db.prepare(`DELETE FROM ${table} WHERE file_id = ?`).run(fileId);
+    const ins = db.prepare(`INSERT INTO ${table} (file_id, tag) VALUES (?, ?)`);
     for (const t of next) ins.run(fileId, t);
   });
   replace();
 }
 
+/** Replace the file-derived (Markdown) tags of a file; writes only when they differ. */
+export function replaceFileTags(fileId: number, tags: string[]): void {
+  replaceTagRows('file_tags', fileId, tags);
+}
+
+/** Replace the path-derived system tags (ext:/dir:) of a file; writes only when they differ. */
+export function replaceSystemTags(fileId: number, tags: string[]): void {
+  replaceTagRows('system_tags', fileId, tags);
+}
+
 /** Tag → number of files having it, in the workspace (count desc, then name). */
-export function listTags(workspaceId: number): { tag: string; count: number }[] {
+export function listTags(workspaceId: number, visibleFilter: TagFilter = NO_FILTER): { tag: string; count: number }[] {
+  const cond = fileFilterSql(visibleFilter, 'f.id');
   return getDb().prepare(`
     SELECT t.tag AS tag, COUNT(DISTINCT t.file_id) AS count
     FROM v_file_tags t
     JOIN files f ON f.id = t.file_id
     WHERE f.workspace_id = ?
+      ${cond.sql ? `AND ${cond.sql}` : ''}
     GROUP BY t.tag
     ORDER BY count DESC, t.tag
-  `).all(workspaceId) as { tag: string; count: number }[];
+  `).all(workspaceId, ...cond.params) as { tag: string; count: number }[];
+}
+
+/** Whether the indexed file is visible under the filter (an unindexed path is never visible). */
+export function fileVisible(workspaceId: number, filePath: string, filter: TagFilter): boolean {
+  const cond = fileFilterSql(filter, 'f.id');
+  const row = getDb().prepare(`
+    SELECT 1 FROM files f
+    WHERE f.workspace_id = ? AND f.path = ?
+      ${cond.sql ? `AND ${cond.sql}` : ''}
+  `).get(workspaceId, filePath, ...cond.params);
+  return row !== undefined;
 }
 
 /** Current tags (both sources) of the given workspace-relative paths. Every requested path is a key. */
-export function getTagsForPaths(workspaceId: number, paths: string[]): Record<string, FileTag[]> {
+export function getTagsForPaths(
+  workspaceId: number,
+  paths: string[],
+  visibleFilter: TagFilter = NO_FILTER,
+): Record<string, FileTag[]> {
   const result: Record<string, FileTag[]> = {};
   for (const p of paths) result[p] = [];
   if (paths.length === 0) return result;
 
+  const cond = fileFilterSql(visibleFilter, 'f.id');
   const rows = getDb().prepare(`
     SELECT f.path AS path, t.tag AS tag, t.source AS source
     FROM files f
     JOIN v_file_tags t ON t.file_id = f.id
     WHERE f.workspace_id = ?
       AND f.path IN (SELECT value FROM json_each(?))
+      ${cond.sql ? `AND ${cond.sql}` : ''}
     ORDER BY t.tag
-  `).all(workspaceId, JSON.stringify(paths)) as { path: string; tag: string; source: TagSource }[];
+  `).all(workspaceId, JSON.stringify(paths), ...cond.params) as { path: string; tag: string; source: TagSource }[];
 
   for (const r of rows) {
     const list = result[r.path];
@@ -546,19 +598,36 @@ export interface FtsResult {
   filePath: string;
 }
 
-// Files having ALL of the given tags (AND). Bind params: the N tags, then N.
-function tagFilesSql(n: number): string {
-  return `
-    SELECT file_id FROM v_file_tags
-    WHERE tag IN (${Array(n).fill('?').join(',')})
-    GROUP BY file_id HAVING COUNT(DISTINCT tag) = ?`;
+/**
+ * SQL condition (and its bind params) restricting `col` (a file id) to files
+ * having ALL `include` tags and NONE of the `exclude` tags. Empty string when
+ * the filter is empty.
+ */
+export function fileFilterSql(filter: TagFilter, col: string): { sql: string; params: (string | number)[] } {
+  const parts: string[] = [];
+  const params: (string | number)[] = [];
+  if (filter.include.length > 0) {
+    parts.push(`${col} IN (
+      SELECT file_id FROM v_file_tags
+      WHERE tag IN (${filter.include.map(() => '?').join(',')})
+      GROUP BY file_id HAVING COUNT(DISTINCT tag) = ?)`);
+    params.push(...filter.include, filter.include.length);
+  }
+  if (filter.exclude.length > 0) {
+    parts.push(`${col} NOT IN (
+      SELECT file_id FROM v_file_tags
+      WHERE tag IN (${filter.exclude.map(() => '?').join(',')}))`);
+    params.push(...filter.exclude);
+  }
+  return { sql: parts.join(' AND '), params };
 }
 
-export function searchFts(workspaceId: number, query: string, limit: number, tags: string[] = []): FtsResult[] {
+const NO_FILTER: TagFilter = { include: [], exclude: [] };
+
+export function searchFts(workspaceId: number, query: string, limit: number, filter: TagFilter = NO_FILTER): FtsResult[] {
   const db = getDb();
   const escaped = query.replace(/"/g, '""');
-  const tagClause = tags.length > 0 ? `AND c.file_id IN (${tagFilesSql(tags.length)})` : '';
-  const tagParams = tags.length > 0 ? [...tags, tags.length] : [];
+  const cond = fileFilterSql(filter, 'c.file_id');
   try {
     return db.prepare(`
       SELECT c.id AS chunkId, c.file_id AS fileId, c.content, c.snippet, f.path AS filePath
@@ -567,23 +636,24 @@ export function searchFts(workspaceId: number, query: string, limit: number, tag
       JOIN files  f ON f.id = c.file_id
       WHERE fts_chunks MATCH ?
         AND c.workspace_id = ?
-        ${tagClause}
+        ${cond.sql ? `AND ${cond.sql}` : ''}
       ORDER BY bm25(fts_chunks)
       LIMIT ?
-    `).all(`"${escaped}"`, workspaceId, ...tagParams, limit) as FtsResult[];
+    `).all(`"${escaped}"`, workspaceId, ...cond.params, limit) as FtsResult[];
   } catch {
     return [];
   }
 }
 
-// With tags, restrict the KNN candidates up front via a rowid constraint (D44)
+// With a tag filter, restrict the KNN candidates up front via a rowid constraint (D44, D51)
 // so the top-k is chosen among matching chunks rather than filtered afterwards.
-export function searchChunks(workspaceId: number, queryVec: number[], topK: number, tags: string[] = []): SearchResult[] {
+export function searchChunks(workspaceId: number, queryVec: number[], topK: number, filter: TagFilter = NO_FILTER): SearchResult[] {
   const db = getDb();
-  const tagClause = tags.length > 0
-    ? `AND v.rowid IN (SELECT c2.id FROM chunks c2 WHERE c2.workspace_id = ? AND c2.file_id IN (${tagFilesSql(tags.length)}))`
+  const cond = fileFilterSql(filter, 'c2.file_id');
+  const rowidClause = cond.sql
+    ? `AND v.rowid IN (SELECT c2.id FROM chunks c2 WHERE c2.workspace_id = ? AND ${cond.sql})`
     : '';
-  const tagParams = tags.length > 0 ? [BigInt(workspaceId), ...tags, tags.length] : [];
+  const filterParams = cond.sql ? [BigInt(workspaceId), ...cond.params] : [];
   const rows = db.prepare(`
     SELECT c.id AS chunkId, c.file_id AS fileId, c.workspace_id AS workspaceId,
            c.content, c.snippet, v.distance, f.path AS filePath
@@ -593,9 +663,9 @@ export function searchChunks(workspaceId: number, queryVec: number[], topK: numb
     WHERE v.workspace_id = ?
       AND v.embedding MATCH ?
       AND k = ?
-      ${tagClause}
+      ${rowidClause}
     ORDER BY v.distance
-  `).all(BigInt(workspaceId), new Float32Array(queryVec), topK, ...tagParams) as SearchResult[];
+  `).all(BigInt(workspaceId), new Float32Array(queryVec), topK, ...filterParams) as SearchResult[];
   return rows;
 }
 
@@ -637,6 +707,7 @@ export interface ChatMessage {
   content: string;
   citations: string | null;
   filter_tags: string | null;
+  filter_exclude_tags: string | null;
   created_at: number;
 }
 
@@ -704,13 +775,18 @@ export function appendChatMessage(
   role: string,
   content: string,
   citations: string | null,
-  filterTags: string[] = []
+  filter: TagFilter = NO_FILTER
 ): void {
   const now = Date.now();
   const db = getDb();
   db.prepare(
-    'INSERT INTO chat_messages (session_id, role, content, citations, filter_tags, created_at) VALUES (?, ?, ?, ?, ?, ?)'
-  ).run(sessionId, role, content, citations, filterTags.length > 0 ? JSON.stringify(filterTags) : null, now);
+    'INSERT INTO chat_messages (session_id, role, content, citations, filter_tags, filter_exclude_tags, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).run(
+    sessionId, role, content, citations,
+    filter.include.length > 0 ? JSON.stringify(filter.include) : null,
+    filter.exclude.length > 0 ? JSON.stringify(filter.exclude) : null,
+    now,
+  );
   db.prepare('UPDATE chat_sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
 }
 

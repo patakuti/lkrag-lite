@@ -30,6 +30,9 @@ async function loadWhoami() {
     const who = await api('GET', '/whoami');
     document.getElementById('chat-title').textContent =
       who.workspaceName ? `lkrag-lite — ${who.workspaceName}` : 'lkrag-lite';
+    // Conditions enforced by the server; shown, but cannot be removed
+    lockedFilter = who.lockedTags || emptyFilter();
+    renderTagFilter();
   } catch (err) {
     showFatalBanner('Access error: ' + err.message);
   }
@@ -117,10 +120,13 @@ async function resumeChat(sessionId) {
     turnData.clear();
     document.getElementById('chat-thread').innerHTML = '';
 
-    let lastFilter = [];
+    let lastFilter = emptyFilter();
     for (const msg of messages) {
       if (msg.role === 'user') {
-        lastFilter = msg.filter_tags ? JSON.parse(msg.filter_tags) : [];
+        lastFilter = {
+          include: msg.filter_tags ? JSON.parse(msg.filter_tags) : [],
+          exclude: msg.filter_exclude_tags ? JSON.parse(msg.filter_exclude_tags) : [],
+        };
         appendUserBubble(msg.content, lastFilter);
         chatHistory.push({ role: 'user', content: msg.content });
       } else if (msg.role === 'assistant') {
@@ -131,7 +137,7 @@ async function resumeChat(sessionId) {
     }
 
     // The filter of the last question stays in effect when the chat is continued
-    activeTags = lastFilter;
+    activeFilter = lastFilter;
     renderTagFilter();
 
     await loadChatHistory();
@@ -145,17 +151,17 @@ async function resumeChat(sessionId) {
 /** Each entry: { role: 'user'|'assistant', content: string } */
 let chatHistory = [];
 let turnCounter = 0;
-const turnData = new Map(); // tid → { userQuery, answer, citations, fileTags, filterTags }
+const turnData = new Map(); // tid → { userQuery, answer, citations, fileTags, filter }
 let pendingUserQuery = null;
-let pendingFilterTags = [];
+let pendingFilter = { include: [], exclude: [] };
 
 function clearChat() {
   chatHistory = [];
   turnCounter = 0;
   turnData.clear();
   pendingUserQuery = null;
-  pendingFilterTags = [];
-  activeTags = [];
+  pendingFilter = emptyFilter();
+  activeFilter = emptyFilter();
   renderTagFilter();
   currentSessionId = null;
   document.getElementById('chat-thread').innerHTML = '';
@@ -183,8 +189,8 @@ async function sendQuery(query) {
   const btnSearch = document.getElementById('btn-search');
   btnSearch.disabled = true;
 
-  const tags = [...activeTags];
-  appendUserBubble(query, tags);
+  const filter = { include: [...activeFilter.include], exclude: [...activeFilter.exclude] };
+  appendUserBubble(query, filter);
   const thinkingEl = appendThinking();
 
   try {
@@ -192,7 +198,8 @@ async function sendQuery(query) {
       query,
       history: chatHistory,
       session_id: currentSessionId,
-      tags: tags.length > 0 ? tags : undefined,
+      tags: filter.include.length > 0 ? filter.include : undefined,
+      excludeTags: filter.exclude.length > 0 ? filter.exclude : undefined,
     });
 
     currentSessionId = result.session_id;
@@ -215,19 +222,19 @@ async function sendQuery(query) {
   }
 }
 
-function appendUserBubble(text, tags = []) {
+function appendUserBubble(text, filter = emptyFilter()) {
   pendingUserQuery = text;
-  pendingFilterTags = tags;
+  pendingFilter = filter;
   const thread = document.getElementById('chat-thread');
   const turn = document.createElement('div');
   turn.className = 'chat-turn';
   const bubble = document.createElement('div');
   bubble.className = 'chat-bubble-user';
   bubble.textContent = text;
-  if (tags.length > 0) {
+  if (filter.include.length > 0 || filter.exclude.length > 0) {
     const tagBox = document.createElement('div');
     tagBox.className = 'bubble-tags';
-    tagBox.innerHTML = tags.map((t) => `<span class="tag-chip">#${esc(t)}</span>`).join('');
+    tagBox.innerHTML = filterChipsHtml(filter);
     bubble.appendChild(tagBox);
   }
   turn.appendChild(bubble);
@@ -249,10 +256,10 @@ function appendAIBubble({ answer, citations, rewriterFallback, fileTags }) {
   const tid = ++turnCounter;
   turnData.set(tid, {
     userQuery: pendingUserQuery, answer, citations,
-    fileTags: fileTags || {}, filterTags: pendingFilterTags,
+    fileTags: fileTags || {}, filter: pendingFilter,
   });
   pendingUserQuery = null;
-  pendingFilterTags = [];
+  pendingFilter = emptyFilter();
   const thread = document.getElementById('chat-thread');
   const turn = document.createElement('div');
   turn.className = 'chat-turn';
@@ -339,9 +346,19 @@ function scrollChatToBottom() {
 
 // ---------- Tags (read-only: display, filter and retry; managed in the admin UI) ----------
 
-/** Tag filter applied to every question of the current chat. */
-let activeTags = [];
+/**
+ * Tag filter chosen by the viewer for the current chat: documents must have all
+ * `include` tags and none of the `exclude` tags (exclusion wins). The server
+ * adds its own enforced condition (`lockedFilter`) on top of this.
+ */
+let activeFilter = { include: [], exclude: [] };
+let lockedFilter = { include: [], exclude: [] };
 let sending = false;
+let knownTags = [];
+
+function emptyFilter() {
+  return { include: [], exclude: [] };
+}
 
 function normalizeTagInput(raw) {
   const tag = raw.trim().replace(/^#+/, '').normalize('NFKC').toLowerCase();
@@ -349,24 +366,53 @@ function normalizeTagInput(raw) {
   return tag;
 }
 
+/** Add the tag to one list of the filter and remove it from the other (a tag cannot be both). */
+function addToFilter(kind, tag) {
+  // Locked tags are already applied by the server and cannot be changed from here
+  if (lockedFilter.include.includes(tag) || lockedFilter.exclude.includes(tag)) return;
+  const other = kind === 'include' ? 'exclude' : 'include';
+  activeFilter[other] = activeFilter[other].filter((t) => t !== tag);
+  if (!activeFilter[kind].includes(tag)) activeFilter[kind].push(tag);
+  renderTagFilter();
+}
+
+/** Chips of a filter (read-only): required as #tag, excluded as −#tag. */
+function filterChipsHtml(filter) {
+  return filter.include.map((t) => `<span class="tag-chip">#${esc(t)}</span>`).join('')
+    + filter.exclude.map((t) => `<span class="tag-chip exclude">−#${esc(t)}</span>`).join('');
+}
+
 function renderTagFilter() {
+  const locked = document.getElementById('tag-filter-locked');
+  const lockedChip = (kind, t) =>
+    `<span class="tag-chip locked${kind === 'exclude' ? ' exclude' : ''}" title="Set by the administrator; cannot be removed">🔒${kind === 'exclude' ? '−' : ''}#${esc(t)}</span>`;
+  locked.innerHTML = lockedFilter.include.map((t) => lockedChip('include', t)).join('')
+    + lockedFilter.exclude.map((t) => lockedChip('exclude', t)).join('');
+
   const box = document.getElementById('tag-filter-chips');
-  box.innerHTML = activeTags.map((t) =>
-    `<span class="tag-chip">#${esc(t)}<button type="button" class="tag-remove" data-tag="${esc(t)}" title="Remove from filter">✕</button></span>`
-  ).join('');
+  const chip = (kind, t) =>
+    `<span class="tag-chip${kind === 'exclude' ? ' exclude' : ''}">${kind === 'exclude' ? '−' : ''}#${esc(t)}<button type="button" class="tag-remove" data-kind="${kind}" data-tag="${esc(t)}" title="Remove from filter">✕</button></span>`;
+  box.innerHTML = activeFilter.include.map((t) => chip('include', t)).join('')
+    + activeFilter.exclude.map((t) => chip('exclude', t)).join('');
   box.querySelectorAll('.tag-remove').forEach((btn) => {
     btn.addEventListener('click', () => {
-      activeTags = activeTags.filter((t) => t !== btn.dataset.tag);
+      const kind = btn.dataset.kind;
+      activeFilter[kind] = activeFilter[kind].filter((t) => t !== btn.dataset.tag);
       renderTagFilter();
     });
   });
 }
 
+/** Autocomplete for the filter input, '-'-prefixed while typing an exclusion. */
+function renderTagOptions(prefix = '') {
+  document.getElementById('tag-filter-list').innerHTML = knownTags
+    .map((t) => `<option value="${esc(prefix + t.tag)}">${esc(prefix + t.tag)} (${t.count})</option>`).join('');
+}
+
 async function loadTagList() {
   try {
-    const tags = await api('GET', '/tags');
-    document.getElementById('tag-list').innerHTML =
-      tags.map((t) => `<option value="${esc(t.tag)}">${esc(t.tag)} (${t.count})</option>`).join('');
+    knownTags = await api('GET', '/tags');
+    renderTagOptions(tagFilterInput.value.startsWith('-') ? '-' : '');
   } catch (_) {
     // Autocomplete is optional; ignore failures
   }
@@ -374,13 +420,15 @@ async function loadTagList() {
 
 const tagFilterInput = document.getElementById('tag-filter-input');
 tagFilterInput.addEventListener('focus', loadTagList);
+tagFilterInput.addEventListener('input', () => renderTagOptions(tagFilterInput.value.startsWith('-') ? '-' : ''));
 tagFilterInput.addEventListener('change', () => {
-  const tag = normalizeTagInput(tagFilterInput.value);
+  // "-tag" excludes, anything else requires
+  const raw = tagFilterInput.value.trim();
+  const kind = raw.startsWith('-') ? 'exclude' : 'include';
+  const tag = normalizeTagInput(kind === 'exclude' ? raw.slice(1) : raw);
   tagFilterInput.value = '';
-  if (tag && !activeTags.includes(tag)) {
-    activeTags.push(tag);
-    renderTagFilter();
-  }
+  renderTagOptions();
+  if (tag) addToFilter(kind, tag);
 });
 
 /** Current tags of the given paths, in batches (the server caps one request). */
@@ -394,18 +442,27 @@ async function lookupFileTags(paths) {
   return fileTags;
 }
 
+/** Path-derived tags (ext:/dir:): shown greyed out and left out of "Related tags". */
+function isSystemTag(t) {
+  return t.sources.every((s) => s === 'system');
+}
+
 function citationTagsHtml(tags) {
   if (!tags || tags.length === 0) return '';
-  return `<div class="citation-tags">${tags.map((t) => `<span class="tag-chip">#${esc(t.name)}</span>`).join('')}</div>`;
+  const sorted = [...tags].sort((a, b) => Number(isSystemTag(a)) - Number(isSystemTag(b)));
+  return `<div class="citation-tags">${sorted.map((t) =>
+    `<span class="tag-chip${isSystemTag(t) ? ' system' : ''}">#${esc(t.name)}</span>`).join('')}</div>`;
 }
 
 /** Tags of the cited files by number of files, excluding those already in the turn's filter. */
 function relatedTagsOf(data) {
   const counts = new Map();
   for (const path of new Set(data.citations.map((c) => c.path))) {
-    for (const t of data.fileTags[path] || []) counts.set(t.name, (counts.get(t.name) || 0) + 1);
+    for (const t of data.fileTags[path] || []) {
+      if (!isSystemTag(t)) counts.set(t.name, (counts.get(t.name) || 0) + 1);
+    }
   }
-  for (const t of data.filterTags) counts.delete(t);
+  for (const t of [...data.filter.include, ...data.filter.exclude, ...lockedFilter.include, ...lockedFilter.exclude]) counts.delete(t);
   return [...counts].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).slice(0, 10);
 }
 
@@ -417,19 +474,21 @@ function renderRelatedTags(tid, el) {
     return;
   }
   el.innerHTML = 'Related tags: ' + related.map(([name, count]) =>
-    `<button type="button" class="tag-chip" data-tag="${esc(name)}" title="Ask the same question again, limited to documents with this tag">#${esc(name)} <span class="tag-count">${count}</span></button>`
+    `<span class="related-item"><button type="button" class="tag-chip" data-tag="${esc(name)}" title="Ask the same question again, limited to documents with this tag">#${esc(name)} <span class="tag-count">${count}</span></button><button type="button" class="tag-exclude" data-tag="${esc(name)}" title="Ask the same question again, excluding documents with this tag">−</button></span>`
   ).join('');
   el.querySelectorAll('button.tag-chip').forEach((btn) => {
-    btn.addEventListener('click', () => retryWithTag(tid, btn.dataset.tag));
+    btn.addEventListener('click', () => retryWithTag(tid, btn.dataset.tag, 'include'));
+  });
+  el.querySelectorAll('button.tag-exclude').forEach((btn) => {
+    btn.addEventListener('click', () => retryWithTag(tid, btn.dataset.tag, 'exclude'));
   });
 }
 
-/** Adds the tag to the filter and asks the turn's question again as a new turn (the old answer stays). */
-function retryWithTag(tid, tag) {
+/** Adds the tag to the filter (required or excluded) and asks the turn's question again as a new turn (the old answer stays). */
+function retryWithTag(tid, tag, kind) {
   const data = turnData.get(tid);
   if (sending || !data || !data.userQuery) return;
-  if (!activeTags.includes(tag)) activeTags.push(tag);
-  renderTagFilter();
+  addToFilter(kind, tag);
   sendQuery(data.userQuery);
 }
 
@@ -439,8 +498,9 @@ function turnToMarkdown(tid) {
   const data = turnData.get(tid);
   if (!data) return '';
   let md = `**You:** ${data.userQuery || ''}\n\n`;
-  if (data.filterTags && data.filterTags.length > 0) {
-    md += `**Tag filter:** ${data.filterTags.map((t) => '#' + t).join(' ')}\n\n`;
+  if (data.filter.include.length > 0 || data.filter.exclude.length > 0) {
+    const parts = [...data.filter.include.map((t) => '#' + t), ...data.filter.exclude.map((t) => '−#' + t)];
+    md += `**Tag filter:** ${parts.join(' ')}\n\n`;
   }
   md += `**Assistant:**\n${data.answer}`;
   if (data.citations && data.citations.length > 0) {

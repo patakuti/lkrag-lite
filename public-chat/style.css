@@ -232,6 +232,9 @@ header h1 { font-size: 18px; }
 }
 button.tag-chip { cursor: pointer; }
 button.tag-chip:hover:not(:disabled) { background: #dbe7fa; }
+.tag-chip.exclude { background: #fdecea; border-color: #f0b4ae; color: #b3261e; }
+.tag-chip.locked { border-style: dashed; }
+.tag-chip.system { background: #f0f0f0; border-color: #d8d8d8; color: #777; }
 .tag-chip .tag-count { color: #789; }
 .tag-chip .tag-remove { cursor: pointer; color: #789; border: none; background: none; padding: 0; font-size: 12px; line-height: 1; }
 .tag-chip .tag-remove:hover { color: #c62828; background: none; }
@@ -241,13 +244,19 @@ button.tag-chip:hover:not(:disabled) { background: #dbe7fa; }
 .citation-tags { margin-bottom: 4px; }
 .citation-tags:empty { display: none; }
 .related-tags { align-self: flex-start; font-size: 12px; color: #888; }
+.related-item { display: inline-flex; align-items: center; gap: 1px; }
+.tag-exclude {
+  padding: 0 5px; font-size: 11px; line-height: 1.4; color: #b3261e;
+  background: none; border: 1px solid transparent; border-radius: 10px; cursor: pointer;
+}
+.tag-exclude:hover:not(:disabled) { background: #fdecea; border-color: #f0b4ae; }
 .related-tags:empty { display: none; }
 .bubble-tags { justify-content: flex-end; }
-.bubble-tags .tag-chip { background: rgba(255, 255, 255, 0.2); border-color: rgba(255, 255, 255, 0.5); color: #fff; }
+.bubble-tags .tag-chip, .bubble-tags .tag-chip.exclude { background: rgba(255, 255, 255, 0.2); border-color: rgba(255, 255, 255, 0.5); color: #fff; }
 
 #tag-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 6px; font-size: 12px; }
 #tag-filter .muted { color: #888; }
-#tag-filter-chips { display: contents; }
+#tag-filter-chips, #tag-filter-locked { display: contents; }
 #tag-filter-input {
   width: 130px; padding: 2px 8px; font-size: 12px;
   border: 1px solid #ccc; border-radius: 10px; font-family: inherit;

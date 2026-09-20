@@ -158,3 +158,20 @@ export function normalizeTagList(input: unknown): string[] {
 export function normalizeTagFilter(body: { tags?: unknown; excludeTags?: unknown }): TagFilter {
   return { include: normalizeTagList(body.tags), exclude: normalizeTagList(body.excludeTags) };
 }
+
+/**
+ * Parse a comma-separated tag list (e.g. from an environment variable).
+ * Empty entries are ignored, invalid entries are reported, duplicates dropped.
+ */
+export function parseTagList(raw: string | undefined): { tags: string[]; invalid: string[] } {
+  const tags = new Set<string>();
+  const invalid: string[] = [];
+  for (const entry of (raw ?? '').split(',')) {
+    const trimmed = entry.trim();
+    if (trimmed === '') continue;
+    const tag = normalizeTag(trimmed);
+    if (tag === null) invalid.push(trimmed);
+    else tags.add(tag);
+  }
+  return { tags: [...tags], invalid };
+}

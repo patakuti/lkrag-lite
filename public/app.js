@@ -431,7 +431,7 @@ function clearChat() {
   turnData.clear();
   pendingUserQuery = null;
   pendingFilter = emptyFilter();
-  activeFilter = emptyFilter();
+  activeFilter = copyFilter(defaultFilter);
   renderTagFilter();
   currentSessionId = null;
   currentSessionDeleted = false;
@@ -663,6 +663,13 @@ let knownTags = [];
 function emptyFilter() {
   return { include: [], exclude: [] };
 }
+
+function copyFilter(filter) {
+  return { include: [...filter.include], exclude: [...filter.exclude] };
+}
+
+/** Default filter from .env (RAG_DEFAULT_*_TAGS): the starting filter of every new chat. */
+let defaultFilter = emptyFilter();
 
 function normalizeTagInput(raw) {
   const tag = raw.trim().replace(/^#+/, '').normalize('NFKC').toLowerCase();
@@ -927,6 +934,12 @@ document.getElementById('settings-modal').addEventListener('click', (e) => {
 async function loadSettings() {
   try {
     const cfg = await api('GET', '/config');
+    defaultFilter = { include: cfg.defaultRequiredTags || [], exclude: cfg.defaultExcludeTags || [] };
+    // A fresh page (no chat started, filter untouched) starts with the defaults
+    if (turnCounter === 0 && activeFilter.include.length === 0 && activeFilter.exclude.length === 0) {
+      activeFilter = copyFilter(defaultFilter);
+      renderTagFilter();
+    }
     document.getElementById('cfg-top-k').value               = cfg.topK;
     document.getElementById('cfg-min-sim').value             = cfg.minSimilarity;
     document.getElementById('cfg-output-instructions').value = cfg.outputInstructions;

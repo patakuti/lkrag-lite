@@ -1,10 +1,14 @@
 import { Router } from 'express';
 import { runtimeConfig, reloadFromEnv } from '../config/runtime.js';
+import { getDefaultTagFilter } from '../config/tagDefaults.js';
 
 const router = Router();
 
 router.get('/', (_req, res) => {
+  const defaultTags = getDefaultTagFilter();
   res.json({
+    defaultRequiredTags: defaultTags.include,
+    defaultExcludeTags: defaultTags.exclude,
     embeddingProvider:  process.env.EMBEDDING_PROVIDER ?? 'openai',
     embeddingModel:     process.env.EMBEDDING_MODEL    ?? 'text-embedding-3-small',
     llmProvider:        process.env.LLM_PROVIDER       ?? 'openai',

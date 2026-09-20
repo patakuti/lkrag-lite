@@ -11,6 +11,7 @@ import {
 } from './db/sqlite.js';
 import { normalizeTag, mergeTagFilters } from './indexer/tags.js';
 import { getDefaultTagFilter, validateTagDefaults } from './config/tagDefaults.js';
+import { reloadFromEnv } from './config/runtime.js';
 import { runUpdateForWorkspace, runRebuildForWorkspace, getStatus, requestCancel } from './indexer/index.js';
 import { retrieveForWorkspace, RetrievedChunk } from './search/retriever.js';
 
@@ -20,6 +21,8 @@ import { retrieveForWorkspace, RetrievedChunk } from './search/retriever.js';
 // --env-file <path> per-command is loaded with override:true and takes highest priority.
 dotenv.config({ path: path.join(getUserConfigDir(), '.env'), quiet: true });
 dotenv.config({ path: path.join(process.cwd(), '.env'), override: true, quiet: true });
+// runtimeConfig is snapshotted when its module loads, which is before .env is read.
+reloadFromEnv();
 
 // ---------- DB init ----------
 
@@ -141,6 +144,7 @@ function loadEnvFile(envFile: string | undefined): void {
     return;
   }
   dotenv.config({ path: resolved, override: true, quiet: true });
+  reloadFromEnv();
 }
 
 // ---------- CLI definition ----------

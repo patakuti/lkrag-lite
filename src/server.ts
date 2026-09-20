@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import { getUserConfigDir, getUserDataDir } from './config/paths.js';
 import { validateProviderConfig, printProviderConfig } from './config/providers.js';
 import { validateTagDefaults } from './config/tagDefaults.js';
+import { reloadFromEnv } from './config/runtime.js';
 import { initDb } from './db/sqlite.js';
 import workspacesRouter from './routes/workspaces.js';
 import indexRouter from './routes/index_route.js';
@@ -23,6 +24,8 @@ import { takeoverPort, ServerBusyError } from './takeover.js';
 //   2. Current working directory (./.env)
 dotenv.config({ path: path.join(getUserConfigDir(), '.env'), quiet: true });
 dotenv.config({ path: path.join(process.cwd(), '.env'), override: true, quiet: true });
+// runtimeConfig is snapshotted when its module loads, which is before .env is read.
+reloadFromEnv();
 
 validateProviderConfig();
 validateTagDefaults();

@@ -36,8 +36,11 @@ describe('extractMarkdownTags: frontmatter', () => {
   it('handles CRLF and BOM', () => {
     expect(extractMarkdownTags('﻿---\r\ntags: [x]\r\n---\r\nbody')).toEqual(['x']);
   });
-  it('ignores invalid YAML but still reads the body', () => {
-    expect(extractMarkdownTags('---\ntags: [unclosed\n---\n#body')).toEqual(['body']);
+  it('returns no tags for invalid YAML', () => {
+    expect(extractMarkdownTags('---\ntags: [unclosed\n---\n#body')).toEqual([]);
+  });
+  it('de-duplicates case-insensitively', () => {
+    expect(extractMarkdownTags('---\ntags: [Foo, foo, bar]\n---\n')).toEqual(['foo', 'bar']);
   });
   it('does not treat a non-leading --- block as frontmatter', () => {
     expect(extractMarkdownTags('intro\n---\ntags: [x]\n---\n')).toEqual([]);
@@ -50,34 +53,16 @@ describe('extractMarkdownTags: frontmatter', () => {
   });
 });
 
-describe('extractMarkdownTags: inline #tag', () => {
-  it('finds tags at line start, after spaces and Japanese text', () => {
-    expect(extractMarkdownTags('#one text #two\nこれは #設計 です')).toEqual(['one', 'two', '設計']);
+describe('extractMarkdownTags: body #tag is not imported (D58)', () => {
+  it('ignores #tag in a document without frontmatter', () => {
+    expect(extractMarkdownTags('#one text #two\nこれは #設計 です')).toEqual([]);
   });
-  it('supports hierarchical tags and trims trailing separators', () => {
-    expect(extractMarkdownTags('#a/b and #c- and #d/')).toEqual(['a/b', 'c', 'd']);
+  it('ignores #tag in the body of a document with frontmatter', () => {
+    expect(extractMarkdownTags('---\ntags: [Foo]\n---\n#foo #bar and #aurora-hub')).toEqual(['foo']);
   });
-  it('ignores headings', () => {
-    expect(extractMarkdownTags('# Title\n## Sub\n### x')).toEqual([]);
-  });
-  it('ignores URL fragments and HTML numeric references', () => {
-    expect(extractMarkdownTags('see http://x.com/page#section and &#39; and a#b')).toEqual([]);
-  });
-  it('ignores purely numeric tags', () => {
-    expect(extractMarkdownTags('issue #123 and #4a')).toEqual(['4a']);
-  });
-  it('ignores fenced code blocks', () => {
-    const text = 'before #in\n```\n#code\n```\n~~~sh\n#code2\n~~~\nafter #out';
-    expect(extractMarkdownTags(text)).toEqual(['in', 'out']);
-  });
-  it('does not close a ``` fence with ~~~', () => {
-    expect(extractMarkdownTags('```\n~~~\n#still-code\n```\n#real')).toEqual(['real']);
-  });
-  it('ignores inline code', () => {
-    expect(extractMarkdownTags('use `#define` and #tag')).toEqual(['tag']);
-  });
-  it('de-duplicates across frontmatter and body, case-insensitively', () => {
-    expect(extractMarkdownTags('---\ntags: [Foo]\n---\n#foo #FOO #bar')).toEqual(['foo', 'bar']);
+  it('ignores headings, URL fragments, issue numbers and code', () => {
+    const text = '# Title\nsee http://x.com/page#section, issue #123, `#define`\n```\n#code\n```';
+    expect(extractMarkdownTags(text)).toEqual([]);
   });
 });
 
@@ -125,9 +110,6 @@ describe('reserved tags', () => {
   });
   it('frontmatter tags cannot impersonate system tags', () => {
     expect(extractMarkdownTags('---\ntags: [ext:pdf, DIR:x, ok]\n---\n')).toEqual(['ok']);
-  });
-  it('inline #ext:pdf is just the tag "ext" (":" is not a tag character), never a system tag', () => {
-    expect(extractMarkdownTags('#ext:pdf')).toEqual(['ext']);
   });
   it('normalizeTag / normalizeTagList still allow them (used for filtering)', () => {
     expect(normalizeTag('ext:pdf')).toBe('ext:pdf');

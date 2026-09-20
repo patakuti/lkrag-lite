@@ -54,7 +54,7 @@ Each of these proves the retrieval approach (local files, hybrid search, embedde
 - **Runtime settings UI**: adjust Top K, Min Similarity, and Output Instructions from the browser without restarting the server
 - **Multi-turn chat**: conversational UI that carries context across turns
 - **Query rewriter**: LLM automatically rewrites follow-up questions into clean, standalone RAG search queries
-- **Document tags**: tags come from the files themselves (Markdown frontmatter / `#tag`), from the path (`ext:pdf`, `dir:<folder>`), or are added by hand in the UI (any file type, e.g. PDF/Office); see related tags for each answer, require or exclude tags in a search, re-ask a question limited to (or without) a tag, and set default required/excluded tags in `.env` — enforced for the public chat (see [Document Tags](#document-tags))
+- **Document tags**: tags come from the files themselves (Markdown frontmatter `tags:`), from the path (`ext:pdf`, `dir:<folder>`), or are added by hand in the UI (any file type, e.g. PDF/Office); see related tags for each answer, require or exclude tags in a search, re-ask a question limited to (or without) a tag, and set default required/excluded tags in `.env` — enforced for the public chat (see [Document Tags](#document-tags))
 - **Chat history**: chats are auto-saved to SQLite and can be resumed at any time; history is shown across all workspaces
 - **CLI tool** (`lkragl`): command-line interface for search and index management, suitable for cron jobs, editor integrations, and automation
 - **Public chat**: token-authenticated, read-only chat UI for sharing a single workspace with other people, served on a separate network-reachable port (see [Public Chat](#public-chat))
@@ -240,7 +240,7 @@ Tags let you group documents, narrow a search to a group, and leave a group out.
 
 | Kind | Source | Editable |
 |---|---|---|
-| **File tags** (blue) | Markdown (`.md`) only: frontmatter `tags:` / `tag:` (inline list, block list, or comma/space-separated) and inline `#tag` in the text. Tags inside code blocks / inline code, headings, URL fragments (`page#section`) and numbers-only (`#123`) are ignored. | Edit the file, then run "Update". |
+| **File tags** (blue) | Markdown (`.md`) only: frontmatter `tags:` / `tag:` (inline list, block list, or comma/space-separated). `#tag` written in the body text is **not** imported — a `#` in prose is often a chat channel, an issue number or a heading, so tags must be written in the frontmatter. | Edit the file, then run "Update". |
 | **Manual tags** (amber) | Added in the UI on any indexed file — including PDF, Word, Excel, PowerPoint, HTML and plain text. Stored only in lkrag-lite's database; your files are never modified. | Add / remove in the UI |
 | **System tags** (grey) | Derived from the file's path for every indexed file: `ext:<extension>` (lower-case, e.g. `ext:pdf`, `ext:md`) and `dir:<top-level folder>` (e.g. `dir:設計`; files directly in the workspace root get no `dir:` tag; whitespace, `,` and `#` in the folder name become `-`). | No — they follow the path automatically |
 
@@ -248,7 +248,7 @@ Tags let you group documents, narrow a search to a group, and leave a group out.
 ---
 tags: [design, 認証]
 ---
-Body text with an inline #draft tag.
+Body text. A #hashtag like this is not a tag.
 ```
 
 - **Normalization**: tags are trimmed, lower-cased and NFKC-normalized (`Design` and `design` are the same tag). A tag is 1–64 characters with no whitespace, `,` or `#`. `a/b` is just one string; there is no hierarchy.

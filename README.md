@@ -54,6 +54,7 @@ Each of these proves the retrieval approach (local files, hybrid search, embedde
 - **Runtime settings UI**: adjust Top K, Min Similarity, and Output Instructions from the browser without restarting the server
 - **Multi-turn chat**: conversational UI that carries context across turns
 - **Query rewriter**: LLM automatically rewrites follow-up questions into clean, standalone RAG search queries
+- **Document tags**: tags come from the files themselves (Markdown frontmatter / `#tag`) or are added by hand in the UI (any file type, e.g. PDF/Office); see related tags for each answer, filter searches by tag, and re-ask a question limited to a tag (see [Document Tags](#document-tags))
 - **Chat history**: chats are auto-saved to SQLite and can be resumed at any time; history is shown across all workspaces
 - **CLI tool** (`lkragl`): command-line interface for search and index management, suitable for cron jobs, editor integrations, and automation
 - **Public chat**: token-authenticated, read-only chat UI for sharing a single workspace with other people, served on a separate network-reachable port (see [Public Chat](#public-chat))
@@ -229,6 +230,30 @@ ready-to-paste `.env` blocks.
 7. **New Chat**: click "New Chat" to start a fresh conversation
 8. **Delete chats**: click "×" next to a chat to delete it, or "Delete All" to clear all history
 9. **Settings**: adjust Top K, Min Similarity, and Output Instructions in the Settings panel; click "Reload .env" to reset to the values in `.env`
+10. **Tags**: see [Document Tags](#document-tags)
+
+## Document Tags
+
+Tags let you group documents and narrow a search to a group. There are two kinds:
+
+| Kind | Source | Editable |
+|---|---|---|
+| **File tags** (blue) | Markdown (`.md`) only: frontmatter `tags:` / `tag:` (inline list, block list, or comma/space-separated) and inline `#tag` in the text. Tags inside code blocks / inline code, headings, URL fragments (`page#section`) and numbers-only (`#123`) are ignored. | Edit the file, then run "Update". |
+| **Manual tags** (amber) | Added in the UI on any indexed file — including PDF, Word, Excel, PowerPoint, HTML and plain text. Stored only in lkrag-lite's database; your files are never modified. | Add / remove in the UI |
+
+```markdown
+---
+tags: [design, 認証]
+---
+Body text with an inline #draft tag.
+```
+
+- **Normalization**: tags are trimmed, lower-cased and NFKC-normalized (`Design` and `design` are the same tag). A tag is 1–64 characters with no whitespace, `,` or `#`. `a/b` is just one string; there is no hierarchy.
+- **In the chat UI**: each reference shows its file's tags. Type in a reference's `+ tag` box to add a manual tag (autocomplete offers existing tags) and click `✕` on a manual tag to remove it. Below each answer, **Related tags** lists the tags of the cited documents (with the number of documents); clicking one adds it to the filter and asks the same question again as a new turn, keeping the previous answer for comparison.
+- **Tag filter**: the row above the input box limits every question in the current chat to documents that have **all** the listed tags (AND). The filter is applied before ranking, so Top K is filled from the matching documents. It is saved with the question and restored when you resume the chat; "New Chat" clears it.
+- **Existing indexes**: file tags are picked up by the next "Update" without re-embedding. Manual tags survive "Update" and "Full Rebuild".
+- **Renames and moves**: manual tags are attached to the file's path relative to the workspace, so renaming or moving a file detaches them (moving it back reattaches them). Deleting a workspace deletes its manual tags.
+- **Public chat**: viewers can see tags, related tags and filter/retry by tag, but cannot add or remove manual tags (that is admin-only). Note that all tag names of the workspace are visible to viewers.
 
 ## CLI Tool (`lkragl`)
 
@@ -266,6 +291,7 @@ lkragl search <query>       Search indexed documents
 lkragl update-index         Incrementally update the index
 lkragl rebuild-index        Rebuild the entire index from scratch
 lkragl status               Show index status
+lkragl tags                 List document tags with the number of documents
 ```
 
 ### Options
@@ -276,7 +302,8 @@ lkragl status               Show index status
 | `--find-workspace` | — | Traverse up from current directory to find a registered workspace |
 | `--limit <n>` | 5 | Number of search results (`search` only) |
 | `--min-similarity <n>` | 0.3 | Minimum similarity score 0–1 (`search` only) |
-| `--format <fmt>` | plain | Output format: `plain`, `tsv`, `json` (`search` only) |
+| `--tag <tag>` | — | Only documents having this tag; repeat to require several (AND) (`search` only) |
+| `--format <fmt>` | plain | Output format: `plain`, `tsv`, `json` (`search` only); `plain`/`json` for `tags` |
 | `--quiet` | — | Suppress informational messages on stderr |
 | `--env-file <path>` | — | Load additional .env file |
 
@@ -302,8 +329,14 @@ lkragl search "authentication flow" --workspace-path /path/to/docs
 # Search from a subdirectory — finds the nearest indexed ancestor automatically
 lkragl search "error handling" --find-workspace
 
-# TSV output for editor integration (path, line, score, content)
+# TSV output for editor integration (path, line, score, content, tags)
 lkragl search "setup guide" --format tsv --limit 10
+
+# Only documents tagged both "design" and "auth"
+lkragl search "token refresh" --tag design --tag auth
+
+# List tags and how many documents have each
+lkragl tags
 
 # JSON output for scripting
 lkragl search "database schema" --format json | jq '.[0].filePath'
@@ -336,7 +369,7 @@ lkragl token revoke <id>                                          # disable a to
 
 Deleting a workspace revokes all of its tokens.
 
-Share `http://<host>:<PUBLIC_PORT>/?token=<token>` with the recipient. The page exchanges the token for an `HttpOnly` cookie on first load (redirecting to a clean URL), so the token itself doesn't stay visible or need to be resent. The UI supports multi-turn chat (with the same query rewriter as the admin UI) and a "Chat History" panel scoped to that token's workspace; citations link to `GET /api/file?path=...` to view the source file in the browser, or `&download=1` to download it — there is no workspace switching, index management, or settings, and no ability to delete chat history from this UI.
+Share `http://<host>:<PUBLIC_PORT>/?token=<token>` with the recipient. The page exchanges the token for an `HttpOnly` cookie on first load (redirecting to a clean URL), so the token itself doesn't stay visible or need to be resent. The UI supports multi-turn chat (with the same query rewriter as the admin UI) and a "Chat History" panel scoped to that token's workspace; citations link to `GET /api/file?path=...` to view the source file in the browser, or `&download=1` to download it — there is no workspace switching, index management, or settings, and no ability to delete chat history from this UI. Recipients can see document tags, related tags and filter by tag (see [Document Tags](#document-tags)), but cannot edit tags.
 
 > **Note:** `PUBLIC_PORT` serves plain HTTP with no built-in TLS — the token travels in cleartext over the network (in the URL on first load, then in a cookie). If recipients are not on a trusted LAN/VPN, put a TLS-terminating reverse proxy (nginx, Caddy, cloudflared, etc.) in front of it.
 
@@ -360,7 +393,7 @@ npm run dev   # tsx watch mode (auto-reload on source change)
 [Admin app: server.ts]     [Public app: publicServer.ts]  [cli.ts]
     ├── Indexer (fast-glob → parser → chunker → Embedding API → sqlite-vec)
     ├── Query Rewriter (conversation history + user input → clean RAG query)
-    ├── Retriever (RAG query → Embedding API → vector KNN + FTS5 BM25 → RRF merge)
+    ├── Retriever (RAG query → Embedding API → vector KNN + FTS5 BM25, optionally pre-filtered by tag → RRF merge)
     ├── LLM (conversation history + RAG context + user input → cited answer)
     └── SQLite + sqlite-vec (embedded vector DB, shared by both apps)
 

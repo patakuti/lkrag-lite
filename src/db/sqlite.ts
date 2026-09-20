@@ -99,6 +99,7 @@ export function initDb(dbPath: string): Database.Database {
   createSchema(db);
   migrateChatSessionsTokenId(db);
   migrateChatMessagesFilterTags(db);
+  refreshTagView(db);
   syncFtsTable(db);
   _db = db;
   return db;
@@ -120,6 +121,26 @@ function migrateChatMessagesFilterTags(db: Database.Database): void {
   if (!cols.some((c) => c.name === 'filter_tags')) {
     db.exec('ALTER TABLE chat_messages ADD COLUMN filter_tags TEXT');
   }
+}
+
+// The view's definition changed when system tags were added, and CREATE VIEW
+// IF NOT EXISTS would keep an old one; recreate it atomically on every start
+// (other processes, e.g. the CLI, may be reading meanwhile).
+function refreshTagView(db: Database.Database): void {
+  db.transaction(() => {
+    db.exec(`
+      DROP VIEW IF EXISTS v_file_tags;
+      CREATE VIEW v_file_tags AS
+        SELECT file_id, tag, 'file' AS source FROM file_tags
+        UNION ALL
+        SELECT file_id, tag, 'system' AS source FROM system_tags
+        UNION ALL
+        SELECT f.id AS file_id, m.tag, 'manual' AS source
+        FROM manual_tags m
+        JOIN files f ON f.workspace_id = m.workspace_id AND f.path = m.path
+        WHERE m.tag NOT LIKE 'ext:%' AND m.tag NOT LIKE 'dir:%';
+    `);
+  })();
 }
 
 function createSchema(db: Database.Database): void {
@@ -229,12 +250,12 @@ function createSchema(db: Database.Database): void {
       PRIMARY KEY (workspace_id, path, tag)
     );
 
-    CREATE VIEW IF NOT EXISTS v_file_tags AS
-      SELECT file_id, tag, 'file' AS source FROM file_tags
-      UNION ALL
-      SELECT f.id AS file_id, m.tag, 'manual' AS source
-      FROM manual_tags m
-      JOIN files f ON f.workspace_id = m.workspace_id AND f.path = m.path;
+    -- System tags (ext:/dir:) derived from the path; regenerated on every index run.
+    CREATE TABLE IF NOT EXISTS system_tags (
+      file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+      tag     TEXT    NOT NULL,
+      PRIMARY KEY (file_id, tag)
+    );
   `);
 }
 
@@ -396,28 +417,37 @@ export function deleteFile(fileId: number): void {
 
 // ---------- tags ----------
 
-export type TagSource = 'file' | 'manual';
+export type TagSource = 'file' | 'manual' | 'system';
 
 export interface FileTag {
   name: string;
   sources: TagSource[];
 }
 
-/** Replace the automatic (file-derived) tags of a file; writes only when they differ. */
-export function replaceFileTags(fileId: number, tags: string[]): void {
+function replaceTagRows(table: 'file_tags' | 'system_tags', fileId: number, tags: string[]): void {
   const db = getDb();
   const current = new Set(
-    (db.prepare('SELECT tag FROM file_tags WHERE file_id = ?').all(fileId) as { tag: string }[]).map((r) => r.tag)
+    (db.prepare(`SELECT tag FROM ${table} WHERE file_id = ?`).all(fileId) as { tag: string }[]).map((r) => r.tag)
   );
   const next = new Set(tags);
   if (current.size === next.size && [...next].every((t) => current.has(t))) return;
 
   const replace = db.transaction(() => {
-    db.prepare('DELETE FROM file_tags WHERE file_id = ?').run(fileId);
-    const ins = db.prepare('INSERT INTO file_tags (file_id, tag) VALUES (?, ?)');
+    db.prepare(`DELETE FROM ${table} WHERE file_id = ?`).run(fileId);
+    const ins = db.prepare(`INSERT INTO ${table} (file_id, tag) VALUES (?, ?)`);
     for (const t of next) ins.run(fileId, t);
   });
   replace();
+}
+
+/** Replace the file-derived (Markdown) tags of a file; writes only when they differ. */
+export function replaceFileTags(fileId: number, tags: string[]): void {
+  replaceTagRows('file_tags', fileId, tags);
+}
+
+/** Replace the path-derived system tags (ext:/dir:) of a file; writes only when they differ. */
+export function replaceSystemTags(fileId: number, tags: string[]): void {
+  replaceTagRows('system_tags', fileId, tags);
 }
 
 /** Tag → number of files having it, in the workspace (count desc, then name). */

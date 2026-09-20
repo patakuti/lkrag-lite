@@ -2,7 +2,7 @@ import { Router, Request } from 'express';
 import {
   getActiveWorkspace, listTags, getTagsForPaths, fileExists, addManualTag, removeManualTag,
 } from '../db/sqlite.js';
-import { normalizeTag } from '../indexer/tags.js';
+import { normalizeTag, isReservedTag } from '../indexer/tags.js';
 
 const MAX_LOOKUP_PATHS = 200;
 
@@ -46,14 +46,14 @@ function parseManualBody(body: unknown): { path: string; tag: string } | null {
   const { path, tag } = (body ?? {}) as { path?: unknown; tag?: unknown };
   if (typeof path !== 'string' || !path || typeof tag !== 'string') return null;
   const normalized = normalizeTag(tag);
-  return normalized === null ? null : { path, tag: normalized };
+  return normalized === null || isReservedTag(normalized) ? null : { path, tag: normalized };
 }
 
 // POST /api/tags/manual — add a manual tag; returns the file's current tags
 router.post('/manual', (req, res) => {
   const parsed = parseManualBody(req.body);
   if (!parsed) {
-    res.status(400).json({ error: 'path and a valid tag are required (1-64 chars, no whitespace, commas or #)' });
+    res.status(400).json({ error: 'path and a valid tag are required (1-64 chars, no whitespace, commas or #; \'ext:\' and \'dir:\' are reserved)' });
     return;
   }
   const ws = getActiveWorkspace();

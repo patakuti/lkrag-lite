@@ -394,16 +394,25 @@ async function lookupFileTags(paths) {
   return fileTags;
 }
 
+/** Path-derived tags (ext:/dir:): shown greyed out and left out of "Related tags". */
+function isSystemTag(t) {
+  return t.sources.every((s) => s === 'system');
+}
+
 function citationTagsHtml(tags) {
   if (!tags || tags.length === 0) return '';
-  return `<div class="citation-tags">${tags.map((t) => `<span class="tag-chip">#${esc(t.name)}</span>`).join('')}</div>`;
+  const sorted = [...tags].sort((a, b) => Number(isSystemTag(a)) - Number(isSystemTag(b)));
+  return `<div class="citation-tags">${sorted.map((t) =>
+    `<span class="tag-chip${isSystemTag(t) ? ' system' : ''}">#${esc(t.name)}</span>`).join('')}</div>`;
 }
 
 /** Tags of the cited files by number of files, excluding those already in the turn's filter. */
 function relatedTagsOf(data) {
   const counts = new Map();
   for (const path of new Set(data.citations.map((c) => c.path))) {
-    for (const t of data.fileTags[path] || []) counts.set(t.name, (counts.get(t.name) || 0) + 1);
+    for (const t of data.fileTags[path] || []) {
+      if (!isSystemTag(t)) counts.set(t.name, (counts.get(t.name) || 0) + 1);
+    }
   }
   for (const t of data.filterTags) counts.delete(t);
   return [...counts].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).slice(0, 10);

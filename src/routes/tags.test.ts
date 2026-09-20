@@ -58,6 +58,11 @@ describe('manual tag routes', () => {
     expect((await send('DELETE', '/manual', { path: 'a.md', tag: '' })).status).toBe(400);
   });
 
+  it('rejects reserved ext:/dir: tags with 400', async () => {
+    expect((await send('POST', '/manual', { path: 'a.md', tag: 'ext:pdf' })).status).toBe(400);
+    expect((await send('POST', '/manual', { path: 'a.md', tag: '#Dir:x' })).status).toBe(400);
+  });
+
   it('returns 404 for a path that is not in the index', async () => {
     expect((await send('POST', '/manual', { path: '../etc/passwd', tag: 'x' })).status).toBe(404);
     expect(getTagsForPaths(wsId, ['../etc/passwd'])['../etc/passwd']).toEqual([]);

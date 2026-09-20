@@ -1,3 +1,4 @@
+import path from 'path';
 import { parse as parseYaml } from 'yaml';
 
 const MAX_TAG_LENGTH = 64;
@@ -12,6 +13,34 @@ export function normalizeTag(raw: string): string | null {
   if (tag.length === 0 || tag.length > MAX_TAG_LENGTH) return null;
   if (/[\s,#]/u.test(tag)) return null;
   return tag;
+}
+
+// `ext:` / `dir:` tags are derived from the path only (requirements §15.2) and
+// cannot be written by documents or by hand, so they can be trusted in filters.
+const RESERVED_PREFIXES = ['ext:', 'dir:'];
+
+export function isReservedTag(tag: string): boolean {
+  return RESERVED_PREFIXES.some((p) => tag.startsWith(p));
+}
+
+/**
+ * Tags derived from a workspace-relative path: `ext:<extension>` and
+ * `dir:<top-level folder>` (files directly in the workspace root get no `dir:`).
+ */
+export function systemTagsForPath(relPath: string): string[] {
+  const segments = relPath.split(/[\\/]/).filter(Boolean);
+  if (segments.length === 0) return [];
+  const tags: string[] = [];
+
+  const ext = path.posix.extname(segments[segments.length - 1]).slice(1);
+  const extTag = ext ? normalizeTag(`ext:${ext}`) : null;
+  if (extTag !== null) tags.push(extTag);
+
+  if (segments.length > 1) {
+    const dirTag = normalizeTag(`dir:${segments[0].replace(/[\s,#]+/g, '-')}`);
+    if (dirTag !== null) tags.push(dirTag);
+  }
+  return tags;
 }
 
 const FRONTMATTER_RE = /^﻿?---[ \t]*\r?\n([\s\S]*?)\r?\n(?:---|\.\.\.)[ \t]*(?:\r?\n|$)/;
@@ -88,7 +117,7 @@ export function extractMarkdownTags(text: string): string[] {
   const seen = new Set<string>();
   for (const r of raw) {
     const tag = normalizeTag(r);
-    if (tag !== null) seen.add(tag);
+    if (tag !== null && !isReservedTag(tag)) seen.add(tag);
   }
   return [...seen];
 }

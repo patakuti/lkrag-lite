@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeTag, normalizeTagList, extractMarkdownTags } from './tags.js';
+import { normalizeTag, normalizeTagList, extractMarkdownTags, systemTagsForPath, isReservedTag } from './tags.js';
 
 describe('normalizeTag', () => {
   it('strips #, trims, lowercases', () => {
@@ -91,5 +91,46 @@ describe('normalizeTagList', () => {
   });
   it('caps at 10 tags', () => {
     expect(normalizeTagList(Array.from({ length: 15 }, (_, i) => `t${i}`))).toHaveLength(10);
+  });
+});
+
+describe('systemTagsForPath', () => {
+  it('derives ext: and dir: tags', () => {
+    expect(systemTagsForPath('設計/spec/a.PDF')).toEqual(['ext:pdf', 'dir:設計']);
+  });
+  it('gives no dir: tag to files in the workspace root', () => {
+    expect(systemTagsForPath('README.md')).toEqual(['ext:md']);
+  });
+  it('uses the last extension and skips extensionless files and dotfiles', () => {
+    expect(systemTagsForPath('a/b.tar.gz')).toEqual(['ext:gz', 'dir:a']);
+    expect(systemTagsForPath('a/Makefile')).toEqual(['dir:a']);
+    expect(systemTagsForPath('.gitignore')).toEqual([]);
+  });
+  it('handles Windows separators', () => {
+    expect(systemTagsForPath('docs\\x.md')).toEqual(['ext:md', 'dir:docs']);
+  });
+  it('replaces whitespace, commas and # in the folder name with -', () => {
+    expect(systemTagsForPath('My Docs, v#2/a.md')).toEqual(['ext:md', 'dir:my-docs-v-2']);
+  });
+  it('skips a dir: tag that would be too long', () => {
+    expect(systemTagsForPath(`${'x'.repeat(70)}/a.md`)).toEqual(['ext:md']);
+  });
+});
+
+describe('reserved tags', () => {
+  it('isReservedTag recognizes ext: and dir:', () => {
+    expect(isReservedTag('ext:pdf')).toBe(true);
+    expect(isReservedTag('dir:x')).toBe(true);
+    expect(isReservedTag('extra')).toBe(false);
+  });
+  it('frontmatter tags cannot impersonate system tags', () => {
+    expect(extractMarkdownTags('---\ntags: [ext:pdf, DIR:x, ok]\n---\n')).toEqual(['ok']);
+  });
+  it('inline #ext:pdf is just the tag "ext" (":" is not a tag character), never a system tag', () => {
+    expect(extractMarkdownTags('#ext:pdf')).toEqual(['ext']);
+  });
+  it('normalizeTag / normalizeTagList still allow them (used for filtering)', () => {
+    expect(normalizeTag('ext:pdf')).toBe('ext:pdf');
+    expect(normalizeTagList(['dir:Archive'])).toEqual(['dir:archive']);
   });
 });

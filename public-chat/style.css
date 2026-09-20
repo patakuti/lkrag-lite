@@ -232,6 +232,7 @@ header h1 { font-size: 18px; }
 }
 button.tag-chip { cursor: pointer; }
 button.tag-chip:hover:not(:disabled) { background: #dbe7fa; }
+.tag-chip.system { background: #f0f0f0; border-color: #d8d8d8; color: #777; }
 .tag-chip .tag-count { color: #789; }
 .tag-chip .tag-remove { cursor: pointer; color: #789; border: none; background: none; padding: 0; font-size: 12px; line-height: 1; }
 .tag-chip .tag-remove:hover { color: #c62828; background: none; }

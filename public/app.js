@@ -703,14 +703,24 @@ async function lookupFileTags(paths) {
   return fileTags;
 }
 
+/** Path-derived tags (ext:/dir:): shown greyed out, not removable, and left out of "Related tags". */
+function isSystemTag(t) {
+  return t.sources.every((s) => s === 'system');
+}
+
+function sortSystemTagsLast(tags) {
+  return [...tags].sort((a, b) => Number(isSystemTag(a)) - Number(isSystemTag(b)));
+}
+
 /** Tag chips of one reference: manual tags (✕ to remove) and a "+ tag" input to add one. */
 function renderCitationTags(el) {
   const path = el.dataset.path;
   const data = turnData.get(Number(el.dataset.tid));
-  const tags = (data && data.fileTags[path]) || [];
+  const tags = sortSystemTagsLast((data && data.fileTags[path]) || []);
   el.innerHTML = tags.map((t) => {
     const manual = t.sources.includes('manual');
-    return `<span class="tag-chip${manual ? ' manual' : ''}">#${esc(t.name)}${
+    const system = isSystemTag(t);
+    return `<span class="tag-chip${manual ? ' manual' : system ? ' system' : ''}">#${esc(t.name)}${
       manual ? `<button type="button" class="tag-remove" data-tag="${esc(t.name)}" title="Remove manual tag">✕</button>` : ''
     }</span>`;
   }).join('') + '<input class="tag-add-input" list="tag-list" placeholder="+ tag" autocomplete="off" />';
@@ -769,7 +779,9 @@ async function removeManualTag(path, tag) {
 function relatedTagsOf(data) {
   const counts = new Map();
   for (const path of new Set(data.citations.map((c) => c.path))) {
-    for (const t of data.fileTags[path] || []) counts.set(t.name, (counts.get(t.name) || 0) + 1);
+    for (const t of data.fileTags[path] || []) {
+      if (!isSystemTag(t)) counts.set(t.name, (counts.get(t.name) || 0) + 1);
+    }
   }
   for (const t of data.filterTags) counts.delete(t);
   return [...counts].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).slice(0, 10);

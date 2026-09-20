@@ -15,7 +15,7 @@ import {
   listWorkspaces,
 } from '../db/sqlite.js';
 import { runtimeConfig } from '../config/runtime.js';
-import { normalizeTagList } from '../indexer/tags.js';
+import { normalizeTagFilter } from '../indexer/tags.js';
 import { createChatRateLimiter } from '../middleware/publicChatRateLimit.js';
 
 const router = Router();
@@ -91,13 +91,14 @@ router.post('/chat', chatRateLimit, (req, res) => {
   void (async () => {
     const workspaceId = req.publicAuth!.workspaceId;
     const tokenId = req.publicAuth!.tokenId;
-    const { query, history, session_id, tags } = req.body as {
+    const { query, history, session_id, tags, excludeTags } = req.body as {
       query?: string;
       history?: ConversationMessage[];
       session_id?: string;
       tags?: unknown;
+      excludeTags?: unknown;
     };
-    const filterTags = normalizeTagList(tags);
+    const filter = normalizeTagFilter({ tags, excludeTags });
 
     if (!query || typeof query !== 'string' || !query.trim()) {
       res.status(400).json({ error: 'query is required' });
@@ -126,7 +127,7 @@ router.post('/chat', chatRateLimit, (req, res) => {
     }
 
     try {
-      appendChatMessage(sessionId, 'user', query.trim(), null, filterTags);
+      appendChatMessage(sessionId, 'user', query.trim(), null, filter);
 
       const { searchQuery, fallback: rewriterFallback, usage: rewriterUsage } = await rewriteQuery(
         query.trim(),
@@ -136,7 +137,7 @@ router.post('/chat', chatRateLimit, (req, res) => {
       const chunks = await retrieveForWorkspace(searchQuery, workspaceId, {
         topK: runtimeConfig.topK,
         minSimilarity: runtimeConfig.minSimilarity,
-        tags: filterTags,
+        filter,
       });
       const { answer, citations, usage: answerUsage } = await generateAnswer(query.trim(), chunks, safeHistory);
 

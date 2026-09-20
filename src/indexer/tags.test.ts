@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeTag, normalizeTagList, extractMarkdownTags, systemTagsForPath, isReservedTag } from './tags.js';
+import { normalizeTag, normalizeTagList, extractMarkdownTags, systemTagsForPath, isReservedTag, normalizeTagFilter, mergeTagFilters, isEmptyTagFilter } from './tags.js';
 
 describe('normalizeTag', () => {
   it('strips #, trims, lowercases', () => {
@@ -132,5 +132,21 @@ describe('reserved tags', () => {
   it('normalizeTag / normalizeTagList still allow them (used for filtering)', () => {
     expect(normalizeTag('ext:pdf')).toBe('ext:pdf');
     expect(normalizeTagList(['dir:Archive'])).toEqual(['dir:archive']);
+  });
+});
+
+describe('TagFilter helpers', () => {
+  it('normalizeTagFilter normalizes both lists independently', () => {
+    expect(normalizeTagFilter({ tags: ['#A', 'a', 'b c'], excludeTags: ['Obsolete', 5] }))
+      .toEqual({ include: ['a'], exclude: ['obsolete'] });
+    expect(normalizeTagFilter({})).toEqual({ include: [], exclude: [] });
+  });
+  it('mergeTagFilters unions both lists', () => {
+    expect(mergeTagFilters({ include: ['a'], exclude: ['x'] }, { include: ['a', 'b'], exclude: ['y'] }))
+      .toEqual({ include: ['a', 'b'], exclude: ['x', 'y'] });
+  });
+  it('isEmptyTagFilter', () => {
+    expect(isEmptyTagFilter({ include: [], exclude: [] })).toBe(true);
+    expect(isEmptyTagFilter({ include: [], exclude: ['x'] })).toBe(false);
   });
 });

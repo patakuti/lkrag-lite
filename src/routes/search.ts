@@ -2,20 +2,21 @@ import { Router } from 'express';
 import { retrieve } from '../search/retriever.js';
 import { generateAnswer, rewriteQuery, ConversationMessage } from '../search/llm.js';
 import { appendChatMessage, getActiveWorkspace, getChatSession, getTagsForPaths } from '../db/sqlite.js';
-import { normalizeTagList } from '../indexer/tags.js';
+import { normalizeTagFilter } from '../indexer/tags.js';
 
 const router = Router();
 
 router.post('/', (req, res) => {
   void (async () => {
-    const { query, history, session_id, skip_rag, tags } = req.body as {
+    const { query, history, session_id, skip_rag, tags, excludeTags } = req.body as {
       query?: string;
       history?: ConversationMessage[];
       session_id?: string;
       skip_rag?: boolean;
       tags?: unknown;
+      excludeTags?: unknown;
     };
-    const filterTags = normalizeTagList(tags);
+    const filter = normalizeTagFilter({ tags, excludeTags });
 
     if (!query || typeof query !== 'string' || !query.trim()) {
       res.status(400).json({ error: 'query is required' });
@@ -42,7 +43,7 @@ router.post('/', (req, res) => {
 
     try {
       if (sessionId) {
-        appendChatMessage(sessionId, 'user', query.trim(), null, filterTags);
+        appendChatMessage(sessionId, 'user', query.trim(), null, filter);
       }
 
       const { searchQuery, fallback: rewriterFallback } = await rewriteQuery(
@@ -50,7 +51,7 @@ router.post('/', (req, res) => {
         safeHistory
       );
 
-      const chunks = skip_rag ? [] : await retrieve(searchQuery, filterTags);
+      const chunks = skip_rag ? [] : await retrieve(searchQuery, filter);
       const result = await generateAnswer(query.trim(), chunks, safeHistory, skip_rag);
 
       if (sessionId) {

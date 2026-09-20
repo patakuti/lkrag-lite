@@ -124,6 +124,24 @@ export function extractMarkdownTags(text: string): string[] {
 
 const MAX_FILTER_TAGS = 10;
 
+/** Tag condition of a search: documents must have all `include` tags and none of the `exclude` tags. */
+export interface TagFilter {
+  include: string[];
+  exclude: string[];
+}
+
+export function isEmptyTagFilter(filter: TagFilter): boolean {
+  return filter.include.length === 0 && filter.exclude.length === 0;
+}
+
+/** Union of both lists (a tag in both means no document matches: exclusion wins). */
+export function mergeTagFilters(a: TagFilter, b: TagFilter): TagFilter {
+  return {
+    include: [...new Set([...a.include, ...b.include])],
+    exclude: [...new Set([...a.exclude, ...b.exclude])],
+  };
+}
+
 /** Normalize a client-supplied tag list: drops non-strings, invalid and duplicate tags, caps the size. */
 export function normalizeTagList(input: unknown): string[] {
   if (!Array.isArray(input)) return [];
@@ -134,4 +152,9 @@ export function normalizeTagList(input: unknown): string[] {
     if (seen.size >= MAX_FILTER_TAGS) break;
   }
   return [...seen];
+}
+
+/** Tag filter from a request body (`tags` = required, `excludeTags` = excluded). */
+export function normalizeTagFilter(body: { tags?: unknown; excludeTags?: unknown }): TagFilter {
+  return { include: normalizeTagList(body.tags), exclude: normalizeTagList(body.excludeTags) };
 }

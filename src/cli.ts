@@ -160,6 +160,12 @@ const sharedOptions = (cmd: Command) =>
 
 // ---------- search ----------
 
+function collectTag(v: string, prev: string[]): string[] {
+  const tag = normalizeTag(v);
+  if (tag === null) throw new InvalidArgumentError('Invalid tag (must be 1-64 chars, no whitespace, commas or #).');
+  return prev.includes(tag) ? prev : [...prev, tag];
+}
+
 sharedOptions(
   program
     .command('search <query>')
@@ -174,11 +180,8 @@ sharedOptions(
       if (isNaN(n) || n < 0 || n > 1) throw new InvalidArgumentError('Must be a number between 0 and 1.');
       return n;
     }, 0.3)
-    .option('--tag <tag>', 'only documents having this tag (repeatable; all given tags are required)', (v: string, prev: string[]) => {
-      const tag = normalizeTag(v);
-      if (tag === null) throw new InvalidArgumentError('Invalid tag (must be 1-64 chars, no whitespace, commas or #).');
-      return prev.includes(tag) ? prev : [...prev, tag];
-    }, [] as string[])
+    .option('--tag <tag>', 'only documents having this tag (repeatable; all given tags are required)', collectTag, [] as string[])
+    .option('--exclude-tag <tag>', 'skip documents having this tag (repeatable; any of the given tags excludes)', collectTag, [] as string[])
     .option('--format <fmt>', 'output format: plain, tsv, json', 'plain')
 ).action(async (query: string, opts) => {
   if (opts.envFile) loadEnvFile(opts.envFile);
@@ -190,7 +193,7 @@ sharedOptions(
   const results = await retrieveForWorkspace(query, ws.id, {
     topK: opts.limit,
     minSimilarity: opts.minSimilarity,
-    tags: opts.tag,
+    filter: { include: opts.tag, exclude: opts.excludeTag },
   });
 
   const fileTags = getTagsForPaths(ws.id, results.map((r) => r.filePath));

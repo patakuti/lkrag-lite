@@ -4,6 +4,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import Database from 'better-sqlite3';
 import * as sqliteVec from 'sqlite-vec';
+import type { TagFilter } from '../indexer/tags.js';
 
 // When running as a pkg standalone binary, the sqlite-vec native extension
 // (.so/.dll/.dylib) lives in pkg's virtual FS and cannot be dlopen()ed directly.
@@ -114,12 +115,14 @@ function migrateChatSessionsTokenId(db: Database.Database): void {
   }
 }
 
-// filter_tags records the tag filter that was applied to a user message (D46);
-// added by migration for databases created before tag support.
+// filter_tags / filter_exclude_tags record the tag filter that was applied to a
+// user message (D46, D54); added by migration for databases created before them.
 function migrateChatMessagesFilterTags(db: Database.Database): void {
   const cols = db.prepare('PRAGMA table_info(chat_messages)').all() as { name: string }[];
-  if (!cols.some((c) => c.name === 'filter_tags')) {
-    db.exec('ALTER TABLE chat_messages ADD COLUMN filter_tags TEXT');
+  for (const col of ['filter_tags', 'filter_exclude_tags']) {
+    if (!cols.some((c) => c.name === col)) {
+      db.exec(`ALTER TABLE chat_messages ADD COLUMN ${col} TEXT`);
+    }
   }
 }
 
@@ -576,19 +579,36 @@ export interface FtsResult {
   filePath: string;
 }
 
-// Files having ALL of the given tags (AND). Bind params: the N tags, then N.
-function tagFilesSql(n: number): string {
-  return `
-    SELECT file_id FROM v_file_tags
-    WHERE tag IN (${Array(n).fill('?').join(',')})
-    GROUP BY file_id HAVING COUNT(DISTINCT tag) = ?`;
+/**
+ * SQL condition (and its bind params) restricting `col` (a file id) to files
+ * having ALL `include` tags and NONE of the `exclude` tags. Empty string when
+ * the filter is empty.
+ */
+export function fileFilterSql(filter: TagFilter, col: string): { sql: string; params: (string | number)[] } {
+  const parts: string[] = [];
+  const params: (string | number)[] = [];
+  if (filter.include.length > 0) {
+    parts.push(`${col} IN (
+      SELECT file_id FROM v_file_tags
+      WHERE tag IN (${filter.include.map(() => '?').join(',')})
+      GROUP BY file_id HAVING COUNT(DISTINCT tag) = ?)`);
+    params.push(...filter.include, filter.include.length);
+  }
+  if (filter.exclude.length > 0) {
+    parts.push(`${col} NOT IN (
+      SELECT file_id FROM v_file_tags
+      WHERE tag IN (${filter.exclude.map(() => '?').join(',')}))`);
+    params.push(...filter.exclude);
+  }
+  return { sql: parts.join(' AND '), params };
 }
 
-export function searchFts(workspaceId: number, query: string, limit: number, tags: string[] = []): FtsResult[] {
+const NO_FILTER: TagFilter = { include: [], exclude: [] };
+
+export function searchFts(workspaceId: number, query: string, limit: number, filter: TagFilter = NO_FILTER): FtsResult[] {
   const db = getDb();
   const escaped = query.replace(/"/g, '""');
-  const tagClause = tags.length > 0 ? `AND c.file_id IN (${tagFilesSql(tags.length)})` : '';
-  const tagParams = tags.length > 0 ? [...tags, tags.length] : [];
+  const cond = fileFilterSql(filter, 'c.file_id');
   try {
     return db.prepare(`
       SELECT c.id AS chunkId, c.file_id AS fileId, c.content, c.snippet, f.path AS filePath
@@ -597,23 +617,24 @@ export function searchFts(workspaceId: number, query: string, limit: number, tag
       JOIN files  f ON f.id = c.file_id
       WHERE fts_chunks MATCH ?
         AND c.workspace_id = ?
-        ${tagClause}
+        ${cond.sql ? `AND ${cond.sql}` : ''}
       ORDER BY bm25(fts_chunks)
       LIMIT ?
-    `).all(`"${escaped}"`, workspaceId, ...tagParams, limit) as FtsResult[];
+    `).all(`"${escaped}"`, workspaceId, ...cond.params, limit) as FtsResult[];
   } catch {
     return [];
   }
 }
 
-// With tags, restrict the KNN candidates up front via a rowid constraint (D44)
+// With a tag filter, restrict the KNN candidates up front via a rowid constraint (D44, D51)
 // so the top-k is chosen among matching chunks rather than filtered afterwards.
-export function searchChunks(workspaceId: number, queryVec: number[], topK: number, tags: string[] = []): SearchResult[] {
+export function searchChunks(workspaceId: number, queryVec: number[], topK: number, filter: TagFilter = NO_FILTER): SearchResult[] {
   const db = getDb();
-  const tagClause = tags.length > 0
-    ? `AND v.rowid IN (SELECT c2.id FROM chunks c2 WHERE c2.workspace_id = ? AND c2.file_id IN (${tagFilesSql(tags.length)}))`
+  const cond = fileFilterSql(filter, 'c2.file_id');
+  const rowidClause = cond.sql
+    ? `AND v.rowid IN (SELECT c2.id FROM chunks c2 WHERE c2.workspace_id = ? AND ${cond.sql})`
     : '';
-  const tagParams = tags.length > 0 ? [BigInt(workspaceId), ...tags, tags.length] : [];
+  const filterParams = cond.sql ? [BigInt(workspaceId), ...cond.params] : [];
   const rows = db.prepare(`
     SELECT c.id AS chunkId, c.file_id AS fileId, c.workspace_id AS workspaceId,
            c.content, c.snippet, v.distance, f.path AS filePath
@@ -623,9 +644,9 @@ export function searchChunks(workspaceId: number, queryVec: number[], topK: numb
     WHERE v.workspace_id = ?
       AND v.embedding MATCH ?
       AND k = ?
-      ${tagClause}
+      ${rowidClause}
     ORDER BY v.distance
-  `).all(BigInt(workspaceId), new Float32Array(queryVec), topK, ...tagParams) as SearchResult[];
+  `).all(BigInt(workspaceId), new Float32Array(queryVec), topK, ...filterParams) as SearchResult[];
   return rows;
 }
 
@@ -667,6 +688,7 @@ export interface ChatMessage {
   content: string;
   citations: string | null;
   filter_tags: string | null;
+  filter_exclude_tags: string | null;
   created_at: number;
 }
 
@@ -734,13 +756,18 @@ export function appendChatMessage(
   role: string,
   content: string,
   citations: string | null,
-  filterTags: string[] = []
+  filter: TagFilter = NO_FILTER
 ): void {
   const now = Date.now();
   const db = getDb();
   db.prepare(
-    'INSERT INTO chat_messages (session_id, role, content, citations, filter_tags, created_at) VALUES (?, ?, ?, ?, ?, ?)'
-  ).run(sessionId, role, content, citations, filterTags.length > 0 ? JSON.stringify(filterTags) : null, now);
+    'INSERT INTO chat_messages (session_id, role, content, citations, filter_tags, filter_exclude_tags, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).run(
+    sessionId, role, content, citations,
+    filter.include.length > 0 ? JSON.stringify(filter.include) : null,
+    filter.exclude.length > 0 ? JSON.stringify(filter.exclude) : null,
+    now,
+  );
   db.prepare('UPDATE chat_sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
 }
 

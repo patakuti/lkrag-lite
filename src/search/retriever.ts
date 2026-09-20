@@ -2,6 +2,7 @@ import path from 'path';
 import { searchChunks, searchFts, getActiveWorkspace, listWorkspaces } from '../db/sqlite.js';
 import { embed } from './embedding.js';
 import { runtimeConfig } from '../config/runtime.js';
+import type { TagFilter } from '../indexer/tags.js';
 
 export interface RetrievedChunk {
   n: number;
@@ -22,13 +23,13 @@ async function retrieveByWorkspaceId(
   wsPath: string,
   topK: number,
   minScore: number,
-  tags: string[],
+  filter: TagFilter,
 ): Promise<RetrievedChunk[]> {
   const fetchN = topK * 2;
   const [queryVec] = await embed([query], 'query');
 
-  const vecRaw = searchChunks(workspaceId, queryVec, fetchN, tags);
-  const ftsRaw = searchFts(workspaceId, query, fetchN, tags);
+  const vecRaw = searchChunks(workspaceId, queryVec, fetchN, filter);
+  const ftsRaw = searchFts(workspaceId, query, fetchN, filter);
 
   // Apply min similarity filter to vec results before ranking
   const vecFiltered = vecRaw
@@ -77,19 +78,19 @@ async function retrieveByWorkspaceId(
     }));
 }
 
-/** `tags` (already normalized) restricts the search to documents having all of them. */
-export async function retrieve(query: string, tags: string[] = []): Promise<RetrievedChunk[]> {
+/** `filter` (already normalized) restricts the search to documents with all `include` tags and none of the `exclude` tags. */
+export async function retrieve(query: string, filter: TagFilter = { include: [], exclude: [] }): Promise<RetrievedChunk[]> {
   const ws = getActiveWorkspace();
   if (!ws) throw new Error('No active workspace');
-  return retrieveByWorkspaceId(query, ws.id, ws.path, runtimeConfig.topK, runtimeConfig.minSimilarity, tags);
+  return retrieveByWorkspaceId(query, ws.id, ws.path, runtimeConfig.topK, runtimeConfig.minSimilarity, filter);
 }
 
 export async function retrieveForWorkspace(
   query: string,
   workspaceId: number,
-  options: { topK: number; minSimilarity: number; tags?: string[] },
+  options: { topK: number; minSimilarity: number; filter?: TagFilter },
 ): Promise<RetrievedChunk[]> {
   const ws = listWorkspaces().find((w) => w.id === workspaceId);
   if (!ws) throw new Error(`Workspace ${workspaceId} not found`);
-  return retrieveByWorkspaceId(query, workspaceId, ws.path, options.topK, options.minSimilarity, options.tags ?? []);
+  return retrieveByWorkspaceId(query, workspaceId, ws.path, options.topK, options.minSimilarity, options.filter ?? { include: [], exclude: [] });
 }

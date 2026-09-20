@@ -454,31 +454,50 @@ export function replaceSystemTags(fileId: number, tags: string[]): void {
 }
 
 /** Tag → number of files having it, in the workspace (count desc, then name). */
-export function listTags(workspaceId: number): { tag: string; count: number }[] {
+export function listTags(workspaceId: number, visibleFilter: TagFilter = NO_FILTER): { tag: string; count: number }[] {
+  const cond = fileFilterSql(visibleFilter, 'f.id');
   return getDb().prepare(`
     SELECT t.tag AS tag, COUNT(DISTINCT t.file_id) AS count
     FROM v_file_tags t
     JOIN files f ON f.id = t.file_id
     WHERE f.workspace_id = ?
+      ${cond.sql ? `AND ${cond.sql}` : ''}
     GROUP BY t.tag
     ORDER BY count DESC, t.tag
-  `).all(workspaceId) as { tag: string; count: number }[];
+  `).all(workspaceId, ...cond.params) as { tag: string; count: number }[];
+}
+
+/** Whether the indexed file is visible under the filter (an unindexed path is never visible). */
+export function fileVisible(workspaceId: number, filePath: string, filter: TagFilter): boolean {
+  const cond = fileFilterSql(filter, 'f.id');
+  const row = getDb().prepare(`
+    SELECT 1 FROM files f
+    WHERE f.workspace_id = ? AND f.path = ?
+      ${cond.sql ? `AND ${cond.sql}` : ''}
+  `).get(workspaceId, filePath, ...cond.params);
+  return row !== undefined;
 }
 
 /** Current tags (both sources) of the given workspace-relative paths. Every requested path is a key. */
-export function getTagsForPaths(workspaceId: number, paths: string[]): Record<string, FileTag[]> {
+export function getTagsForPaths(
+  workspaceId: number,
+  paths: string[],
+  visibleFilter: TagFilter = NO_FILTER,
+): Record<string, FileTag[]> {
   const result: Record<string, FileTag[]> = {};
   for (const p of paths) result[p] = [];
   if (paths.length === 0) return result;
 
+  const cond = fileFilterSql(visibleFilter, 'f.id');
   const rows = getDb().prepare(`
     SELECT f.path AS path, t.tag AS tag, t.source AS source
     FROM files f
     JOIN v_file_tags t ON t.file_id = f.id
     WHERE f.workspace_id = ?
       AND f.path IN (SELECT value FROM json_each(?))
+      ${cond.sql ? `AND ${cond.sql}` : ''}
     ORDER BY t.tag
-  `).all(workspaceId, JSON.stringify(paths)) as { path: string; tag: string; source: TagSource }[];
+  `).all(workspaceId, JSON.stringify(paths), ...cond.params) as { path: string; tag: string; source: TagSource }[];
 
   for (const r of rows) {
     const list = result[r.path];

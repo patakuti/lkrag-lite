@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import path from 'path';
-import { listWorkspaces } from '../db/sqlite.js';
+import { listWorkspaces, fileVisible } from '../db/sqlite.js';
+import { isEmptyTagFilter } from '../indexer/tags.js';
+import { getDefaultTagFilter } from '../config/tagDefaults.js';
 
 const router = Router();
 
@@ -27,6 +29,17 @@ router.get('/file', (req, res) => {
   if (!normalized.startsWith(wsNorm + path.sep) && normalized !== wsNorm) {
     res.status(403).json({ error: 'Path is outside the workspace' });
     return;
+  }
+
+  // Enforced default condition (D53): a document hidden from search must not be
+  // fetchable by guessing its path either. Same 404 as a missing file.
+  const enforced = getDefaultTagFilter();
+  if (!isEmptyTagFilter(enforced)) {
+    const relPath = path.relative(wsNorm, normalized).split(path.sep).join('/');
+    if (!fileVisible(workspaceId, relPath, enforced)) {
+      res.status(404).json({ error: 'File not found' });
+      return;
+    }
   }
 
   if (req.query.download) {

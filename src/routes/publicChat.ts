@@ -15,7 +15,8 @@ import {
   listWorkspaces,
 } from '../db/sqlite.js';
 import { runtimeConfig } from '../config/runtime.js';
-import { normalizeTagFilter } from '../indexer/tags.js';
+import { normalizeTagFilter, mergeTagFilters } from '../indexer/tags.js';
+import { getDefaultTagFilter } from '../config/tagDefaults.js';
 import { createChatRateLimiter } from '../middleware/publicChatRateLimit.js';
 
 const router = Router();
@@ -49,7 +50,9 @@ function estimateCostUsd(promptTokens: number | null, completionTokens: number |
 router.get('/whoami', (req, res) => {
   const { workspaceId, label } = req.publicAuth!;
   const ws = listWorkspaces().find((w) => w.id === workspaceId);
-  res.json({ label, workspaceName: ws?.name ?? null });
+  // lockedTags: the enforced default condition (D53), shown by the UI as chips viewers cannot remove
+  const locked = getDefaultTagFilter();
+  res.json({ label, workspaceName: ws?.name ?? null, lockedTags: { include: locked.include, exclude: locked.exclude } });
 });
 
 // GET /chats — sessions created by this token only (not shared with other
@@ -98,7 +101,12 @@ router.post('/chat', chatRateLimit, (req, res) => {
       tags?: unknown;
       excludeTags?: unknown;
     };
-    const filter = normalizeTagFilter({ tags, excludeTags });
+    // What the viewer chose (recorded with the message) vs. what is applied: the
+    // enforced default condition is added on the server and cannot be dropped or
+    // overridden by the request (exclusion wins, D53).
+    const requested = normalizeTagFilter({ tags, excludeTags });
+    const enforced = getDefaultTagFilter();
+    const filter = mergeTagFilters(enforced, requested);
 
     if (!query || typeof query !== 'string' || !query.trim()) {
       res.status(400).json({ error: 'query is required' });
@@ -127,7 +135,7 @@ router.post('/chat', chatRateLimit, (req, res) => {
     }
 
     try {
-      appendChatMessage(sessionId, 'user', query.trim(), null, filter);
+      appendChatMessage(sessionId, 'user', query.trim(), null, requested);
 
       const { searchQuery, fallback: rewriterFallback, usage: rewriterUsage } = await rewriteQuery(
         query.trim(),
@@ -154,7 +162,7 @@ router.post('/chat', chatRateLimit, (req, res) => {
       );
 
       // Current tags of the cited files (not persisted with the citations, D45)
-      const fileTags = getTagsForPaths(workspaceId, citations.map((c) => c.path));
+      const fileTags = getTagsForPaths(workspaceId, citations.map((c) => c.path), enforced);
 
       res.json({ session_id: sessionId, answer, citations, rewriterFallback, fileTags });
     } catch (err) {

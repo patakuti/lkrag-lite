@@ -2,7 +2,7 @@ import { Router, Request } from 'express';
 import {
   getActiveWorkspace, listTags, getTagsForPaths, fileExists, addManualTag, removeManualTag,
 } from '../db/sqlite.js';
-import { normalizeTag, isReservedTag } from '../indexer/tags.js';
+import { normalizeTag, isReservedTag, TagFilter } from '../indexer/tags.js';
 
 const MAX_LOOKUP_PATHS = 200;
 
@@ -10,14 +10,19 @@ const MAX_LOOKUP_PATHS = 200;
  * Read-only tag routes (GET /, POST /lookup), shared by the admin and public
  * apps. Only the way the workspace is resolved differs: the admin app uses
  * the active workspace, the public app the one bound to the token (D49).
+ * `resolveVisibleFilter` limits what is reported to the files a viewer may see
+ * (the public app's enforced condition, D53); the admin app reports everything.
  */
-export function createTagReadRouter(resolveWorkspaceId: (req: Request) => number | null): Router {
+export function createTagReadRouter(
+  resolveWorkspaceId: (req: Request) => number | null,
+  resolveVisibleFilter?: (req: Request) => TagFilter,
+): Router {
   const router = Router();
 
   // GET / — tags of the workspace with file counts
   router.get('/', (req, res) => {
     const wsId = resolveWorkspaceId(req);
-    res.json(wsId !== null ? listTags(wsId) : []);
+    res.json(wsId !== null ? listTags(wsId, resolveVisibleFilter?.(req)) : []);
   });
 
   // POST /lookup — current tags (auto + manual) of the given relative paths
@@ -32,7 +37,7 @@ export function createTagReadRouter(resolveWorkspaceId: (req: Request) => number
       return;
     }
     const wsId = resolveWorkspaceId(req);
-    res.json({ fileTags: wsId !== null ? getTagsForPaths(wsId, paths as string[]) : {} });
+    res.json({ fileTags: wsId !== null ? getTagsForPaths(wsId, paths as string[], resolveVisibleFilter?.(req)) : {} });
   });
 
   return router;

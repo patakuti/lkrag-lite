@@ -1,6 +1,7 @@
 import path from 'path';
 import express, { Express } from 'express';
 import { publicAuth } from './middleware/publicAuth.js';
+import { trackActivity } from './middleware/activity.js';
 import publicChatRouter from './routes/publicChat.js';
 import publicFileRouter from './routes/publicFile.js';
 
@@ -10,6 +11,8 @@ import publicFileRouter from './routes/publicFile.js';
 // is gated by publicAuth instead.
 export function createPublicApp(): Express {
   const app = express();
+  // Count in-flight requests so a new server won't replace us mid-chat (§13).
+  app.use(trackActivity);
   app.use(express.json());
   app.use(publicAuth);
 

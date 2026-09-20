@@ -12,19 +12,22 @@
       <h1 id="chat-title">lkrag-lite</h1>
     </header>
 
-    <div id="top-pane">
-      <div id="history-row">
-        <div id="history-header">
-          <span class="pane-label">Chat History</span>
-          <button id="btn-delete-all-chats" class="danger btn-sm" title="Delete all chats">Delete All</button>
-        </div>
-        <div id="chat-history-list"></div>
+    <div id="main-split">
+    <!-- Left column: chat history -->
+    <aside id="history-pane">
+      <div id="history-header">
+        <span class="pane-label">Chat History</span>
+        <button id="btn-delete-all-chats" class="danger btn-sm" title="Delete all chats">Delete All</button>
       </div>
-    </div>
+      <div id="chat-history-list"></div>
+    </aside>
 
     <div id="chat-main">
       <div id="chat-header">
-        <span id="chat-error-banner" class="error hidden"></span>
+        <div class="chat-header-left">
+          <button id="btn-toggle-history" class="btn-sm" title="Show / hide chat history" aria-expanded="true">☰ History</button>
+          <span id="chat-error-banner" class="error hidden"></span>
+        </div>
         <div class="chat-header-actions">
           <button id="btn-copy-all">Copy All</button>
           <button id="btn-new-chat">New Chat</button>
@@ -47,6 +50,7 @@
           <button type="submit" id="btn-search">Send</button>
         </form>
       </div>
+    </div>
     </div>
   </div>
 

@@ -13,7 +13,7 @@ body {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  max-width: 900px;
+  max-width: 1180px;
   margin: 0 auto;
   padding: 0 16px;
 }
@@ -26,17 +26,6 @@ header {
 }
 header h1 { font-size: 18px; }
 
-/* Top pane: chat history only */
-#top-pane {
-  flex-shrink: 0;
-  background: #fff;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  margin: 10px 0 0;
-  padding: 8px 14px;
-}
-
-#history-row { display: flex; flex-direction: column; gap: 4px; }
 
 #history-header {
   display: flex;
@@ -56,7 +45,8 @@ header h1 { font-size: 18px; }
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-height: 120px;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   border: 1px solid #eee;
   border-radius: 4px;
@@ -72,9 +62,11 @@ header h1 { font-size: 18px; }
 }
 
 .history-item {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 6px;
+  row-gap: 1px;
   align-items: center;
-  gap: 6px;
   padding: 5px 8px;
   cursor: pointer;
   border-radius: 3px;
@@ -87,7 +79,8 @@ header h1 { font-size: 18px; }
 .history-item.active { background: #e8f0fe; font-weight: 600; }
 
 .history-item-title {
-  flex: 1;
+  grid-column: 1;
+  grid-row: 1;
   font-size: 12px;
   color: #333;
   overflow: hidden;
@@ -97,6 +90,8 @@ header h1 { font-size: 18px; }
 }
 
 .history-item-date {
+  grid-column: 2;
+  grid-row: 2;
   font-size: 11px;
   color: #aaa;
   white-space: nowrap;
@@ -104,6 +99,8 @@ header h1 { font-size: 18px; }
 }
 
 .btn-delete-chat {
+  grid-column: 2;
+  grid-row: 1;
   background: none;
   border: none;
   color: #bbb;
@@ -121,7 +118,8 @@ header h1 { font-size: 18px; }
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  margin-top: 10px;
+  min-width: 0;
+  min-height: 0;
 }
 
 #chat-header {
@@ -317,3 +315,34 @@ button.danger:hover:not(:disabled) { background: #ffebee; }
 /* Util */
 .hidden { display: none !important; }
 .error { color: #c62828; font-size: 13px; margin-top: 4px; }
+
+/* Left column: chat history + chat (D57) */
+#main-split {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+#history-pane {
+  width: 260px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+#app.history-collapsed #history-pane { display: none; }
+
+.chat-header-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
+
+/* Narrow screens: history is stacked above the chat and can be collapsed */
+@media (max-width: 700px) {
+  #main-split { flex-direction: column; gap: 8px; }
+  #history-pane { width: 100%; max-height: 160px; }
+}

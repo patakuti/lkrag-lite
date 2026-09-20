@@ -228,7 +228,7 @@ ready-to-paste `.env` blocks.
 3. **Index**: click "Update" (incremental) or "Full Rebuild"
 4. **Chat**: type a question and click "Send"; follow-up questions carry conversation context automatically
 5. **Citations**: click `[n]` in the answer or "Open" in the References section to open the source file
-6. **Chat history**: past chats appear in the "Chat History" panel; click one to resume (workspace switches automatically)
+6. **Chat history**: past chats appear in the "Chat History" column on the left; click one to resume (workspace switches automatically). "☰ History" in the chat header hides / shows the column (the choice is remembered in the browser). On narrow screens (under 700px) the column is stacked above the chat, starts collapsed, and collapses again after you pick a chat
 7. **New Chat**: click "New Chat" to start a fresh conversation
 8. **Delete chats**: click "×" next to a chat to delete it, or "Delete All" to clear all history
 9. **Settings**: adjust Top K, Min Similarity, and Output Instructions in the Settings panel; click "Reload .env" to reset to the values in `.env`
@@ -401,7 +401,7 @@ lkragl token revoke <id>                                          # disable a to
 
 Deleting a workspace revokes all of its tokens.
 
-Share `http://<host>:<PUBLIC_PORT>/?token=<token>` with the recipient. The page exchanges the token for an `HttpOnly` cookie on first load (redirecting to a clean URL), so the token itself doesn't stay visible or need to be resent. The UI supports multi-turn chat (with the same query rewriter as the admin UI) and a "Chat History" panel scoped to that token's workspace; citations link to `GET /api/file?path=...` to view the source file in the browser, or `&download=1` to download it — there is no workspace switching, index management, or settings, and no ability to delete chat history from this UI. Recipients can see document tags, related tags and require / exclude tags (see [Document Tags](#document-tags)), but cannot edit tags. `RAG_DEFAULT_REQUIRED_TAGS` / `RAG_DEFAULT_EXCLUDE_TAGS` are enforced for them — see [Hiding documents from the public chat](#hiding-documents-from-the-public-chat).
+Share `http://<host>:<PUBLIC_PORT>/?token=<token>` with the recipient. The page exchanges the token for an `HttpOnly` cookie on first load (redirecting to a clean URL), so the token itself doesn't stay visible or need to be resent. The UI supports multi-turn chat (with the same query rewriter as the admin UI) and a "Chat History" column (collapsible, same as the admin UI) scoped to that token's workspace; citations link to `GET /api/file?path=...` to view the source file in the browser, or `&download=1` to download it — there is no workspace switching, index management, or settings, and no ability to delete chat history from this UI. Recipients can see document tags, related tags and require / exclude tags (see [Document Tags](#document-tags)), but cannot edit tags. `RAG_DEFAULT_REQUIRED_TAGS` / `RAG_DEFAULT_EXCLUDE_TAGS` are enforced for them — see [Hiding documents from the public chat](#hiding-documents-from-the-public-chat).
 
 > **Note:** `PUBLIC_PORT` serves plain HTTP with no built-in TLS — the token travels in cleartext over the network (in the URL on first load, then in a cookie). If recipients are not on a trusted LAN/VPN, put a TLS-terminating reverse proxy (nginx, Caddy, cloudflared, etc.) in front of it.
 

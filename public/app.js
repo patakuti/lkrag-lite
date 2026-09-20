@@ -110,6 +110,30 @@ document.getElementById('btn-delete-ws').addEventListener('click', async () => {
 
 // ---------- Directory picker modal ----------
 
+// ---------- Chat History column (collapsible, D57) ----------
+const HISTORY_COLLAPSED_KEY = 'lkragl.historyCollapsed';
+const narrowScreen = window.matchMedia('(max-width: 700px)');
+
+function setHistoryCollapsed(collapsed, persist) {
+  document.getElementById('app').classList.toggle('history-collapsed', collapsed);
+  document.getElementById('btn-toggle-history').setAttribute('aria-expanded', String(!collapsed));
+  if (persist) {
+    try { localStorage.setItem(HISTORY_COLLAPSED_KEY, collapsed ? '1' : '0'); } catch (_) { /* storage unavailable */ }
+  }
+}
+
+document.getElementById('btn-toggle-history').addEventListener('click', () => {
+  const collapsed = !document.getElementById('app').classList.contains('history-collapsed');
+  setHistoryCollapsed(collapsed, true);
+});
+
+// No saved choice: start collapsed on narrow screens, expanded otherwise.
+(function initHistoryColumn() {
+  let saved = null;
+  try { saved = localStorage.getItem(HISTORY_COLLAPSED_KEY); } catch (_) { /* storage unavailable */ }
+  setHistoryCollapsed(saved === null ? narrowScreen.matches : saved === '1', false);
+})();
+
 document.getElementById('btn-add-ws').addEventListener('click', () => openDirModal());
 
 document.getElementById('modal-cancel-btn').addEventListener('click', closeDirModal);
@@ -321,9 +345,11 @@ function renderChatHistory() {
   }).join('');
 
   list.querySelectorAll('.history-item').forEach((el) => {
-    el.addEventListener('click', (e) => {
+    el.addEventListener('click', async (e) => {
       if (e.target.classList.contains('btn-delete-chat')) return;
-      resumeChat(el.dataset.id);
+      await resumeChat(el.dataset.id);
+      // Stacked layout: get the history out of the way (not remembered as the user's choice).
+      if (narrowScreen.matches) setHistoryCollapsed(true, false);
     });
   });
 

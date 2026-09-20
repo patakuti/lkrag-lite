@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeTag, extractMarkdownTags } from './tags.js';
+import { normalizeTag, normalizeTagList, extractMarkdownTags } from './tags.js';
 
 describe('normalizeTag', () => {
   it('strips #, trims, lowercases', () => {
@@ -78,5 +78,18 @@ describe('extractMarkdownTags: inline #tag', () => {
   });
   it('de-duplicates across frontmatter and body, case-insensitively', () => {
     expect(extractMarkdownTags('---\ntags: [Foo]\n---\n#foo #FOO #bar')).toEqual(['foo', 'bar']);
+  });
+});
+
+describe('normalizeTagList', () => {
+  it('normalizes, de-duplicates and drops invalid entries', () => {
+    expect(normalizeTagList(['#A', 'a', 'b c', 5, '設計'])).toEqual(['a', '設計']);
+  });
+  it('returns [] for non-arrays', () => {
+    expect(normalizeTagList(undefined)).toEqual([]);
+    expect(normalizeTagList('a')).toEqual([]);
+  });
+  it('caps at 10 tags', () => {
+    expect(normalizeTagList(Array.from({ length: 15 }, (_, i) => `t${i}`))).toHaveLength(10);
   });
 });

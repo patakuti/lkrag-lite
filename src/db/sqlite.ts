@@ -536,9 +536,19 @@ export interface FtsResult {
   filePath: string;
 }
 
-export function searchFts(workspaceId: number, query: string, limit: number): FtsResult[] {
+// Files having ALL of the given tags (AND). Bind params: the N tags, then N.
+function tagFilesSql(n: number): string {
+  return `
+    SELECT file_id FROM v_file_tags
+    WHERE tag IN (${Array(n).fill('?').join(',')})
+    GROUP BY file_id HAVING COUNT(DISTINCT tag) = ?`;
+}
+
+export function searchFts(workspaceId: number, query: string, limit: number, tags: string[] = []): FtsResult[] {
   const db = getDb();
   const escaped = query.replace(/"/g, '""');
+  const tagClause = tags.length > 0 ? `AND c.file_id IN (${tagFilesSql(tags.length)})` : '';
+  const tagParams = tags.length > 0 ? [...tags, tags.length] : [];
   try {
     return db.prepare(`
       SELECT c.id AS chunkId, c.file_id AS fileId, c.content, c.snippet, f.path AS filePath
@@ -547,16 +557,23 @@ export function searchFts(workspaceId: number, query: string, limit: number): Ft
       JOIN files  f ON f.id = c.file_id
       WHERE fts_chunks MATCH ?
         AND c.workspace_id = ?
+        ${tagClause}
       ORDER BY bm25(fts_chunks)
       LIMIT ?
-    `).all(`"${escaped}"`, workspaceId, limit) as FtsResult[];
+    `).all(`"${escaped}"`, workspaceId, ...tagParams, limit) as FtsResult[];
   } catch {
     return [];
   }
 }
 
-export function searchChunks(workspaceId: number, queryVec: number[], topK: number): SearchResult[] {
+// With tags, restrict the KNN candidates up front via a rowid constraint (D44)
+// so the top-k is chosen among matching chunks rather than filtered afterwards.
+export function searchChunks(workspaceId: number, queryVec: number[], topK: number, tags: string[] = []): SearchResult[] {
   const db = getDb();
+  const tagClause = tags.length > 0
+    ? `AND v.rowid IN (SELECT c2.id FROM chunks c2 WHERE c2.workspace_id = ? AND c2.file_id IN (${tagFilesSql(tags.length)}))`
+    : '';
+  const tagParams = tags.length > 0 ? [BigInt(workspaceId), ...tags, tags.length] : [];
   const rows = db.prepare(`
     SELECT c.id AS chunkId, c.file_id AS fileId, c.workspace_id AS workspaceId,
            c.content, c.snippet, v.distance, f.path AS filePath
@@ -566,8 +583,9 @@ export function searchChunks(workspaceId: number, queryVec: number[], topK: numb
     WHERE v.workspace_id = ?
       AND v.embedding MATCH ?
       AND k = ?
+      ${tagClause}
     ORDER BY v.distance
-  `).all(BigInt(workspaceId), new Float32Array(queryVec), topK) as SearchResult[];
+  `).all(BigInt(workspaceId), new Float32Array(queryVec), topK, ...tagParams) as SearchResult[];
   return rows;
 }
 

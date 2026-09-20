@@ -92,3 +92,17 @@ export function extractMarkdownTags(text: string): string[] {
   }
   return [...seen];
 }
+
+const MAX_FILTER_TAGS = 10;
+
+/** Normalize a client-supplied tag list: drops non-strings, invalid and duplicate tags, caps the size. */
+export function normalizeTagList(input: unknown): string[] {
+  if (!Array.isArray(input)) return [];
+  const seen = new Set<string>();
+  for (const raw of input) {
+    const tag = typeof raw === 'string' ? normalizeTag(raw) : null;
+    if (tag !== null) seen.add(tag);
+    if (seen.size >= MAX_FILTER_TAGS) break;
+  }
+  return [...seen];
+}

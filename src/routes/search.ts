@@ -1,18 +1,21 @@
 import { Router } from 'express';
 import { retrieve } from '../search/retriever.js';
 import { generateAnswer, rewriteQuery, ConversationMessage } from '../search/llm.js';
-import { appendChatMessage, getChatSession } from '../db/sqlite.js';
+import { appendChatMessage, getActiveWorkspace, getChatSession, getTagsForPaths } from '../db/sqlite.js';
+import { normalizeTagList } from '../indexer/tags.js';
 
 const router = Router();
 
 router.post('/', (req, res) => {
   void (async () => {
-    const { query, history, session_id, skip_rag } = req.body as {
+    const { query, history, session_id, skip_rag, tags } = req.body as {
       query?: string;
       history?: ConversationMessage[];
       session_id?: string;
       skip_rag?: boolean;
+      tags?: unknown;
     };
+    const filterTags = normalizeTagList(tags);
 
     if (!query || typeof query !== 'string' || !query.trim()) {
       res.status(400).json({ error: 'query is required' });
@@ -47,14 +50,18 @@ router.post('/', (req, res) => {
         safeHistory
       );
 
-      const chunks = skip_rag ? [] : await retrieve(searchQuery);
+      const chunks = skip_rag ? [] : await retrieve(searchQuery, filterTags);
       const result = await generateAnswer(query.trim(), chunks, safeHistory, skip_rag);
 
       if (sessionId) {
         appendChatMessage(sessionId, 'assistant', result.answer, JSON.stringify(result.citations));
       }
 
-      res.json({ ...result, rewriterFallback });
+      // Current tags of the cited files (not persisted with the citations, D45)
+      const ws = getActiveWorkspace();
+      const fileTags = ws ? getTagsForPaths(ws.id, result.citations.map((c) => c.path)) : {};
+
+      res.json({ ...result, rewriterFallback, fileTags });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       res.status(500).json({ error: msg });

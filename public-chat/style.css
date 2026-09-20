@@ -223,6 +223,36 @@ header h1 { font-size: 18px; }
 .citation-links a { font-size: 11px; }
 
 /* Copy turn button */
+/* Tags (read-only in the public chat) */
+.tag-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; line-height: 1.4; padding: 1px 8px;
+  border: 1px solid #c5d5ee; border-radius: 10px;
+  background: #eef3fc; color: #1a4fa0;
+}
+button.tag-chip { cursor: pointer; }
+button.tag-chip:hover:not(:disabled) { background: #dbe7fa; }
+.tag-chip .tag-count { color: #789; }
+.tag-chip .tag-remove { cursor: pointer; color: #789; border: none; background: none; padding: 0; font-size: 12px; line-height: 1; }
+.tag-chip .tag-remove:hover { color: #c62828; background: none; }
+.citation-tags, .related-tags, .bubble-tags {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+}
+.citation-tags { margin-bottom: 4px; }
+.citation-tags:empty { display: none; }
+.related-tags { align-self: flex-start; font-size: 12px; color: #888; }
+.related-tags:empty { display: none; }
+.bubble-tags { justify-content: flex-end; }
+.bubble-tags .tag-chip { background: rgba(255, 255, 255, 0.2); border-color: rgba(255, 255, 255, 0.5); color: #fff; }
+
+#tag-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 6px; font-size: 12px; }
+#tag-filter .muted { color: #888; }
+#tag-filter-chips { display: contents; }
+#tag-filter-input {
+  width: 130px; padding: 2px 8px; font-size: 12px;
+  border: 1px solid #ccc; border-radius: 10px; font-family: inherit;
+}
+
 .btn-copy-turn {
   align-self: flex-start;
   font-size: 11px;

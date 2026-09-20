@@ -1,33 +1,44 @@
-import { Router } from 'express';
+import { Router, Request } from 'express';
 import {
   getActiveWorkspace, listTags, getTagsForPaths, fileExists, addManualTag, removeManualTag,
 } from '../db/sqlite.js';
 import { normalizeTag } from '../indexer/tags.js';
 
-const router = Router();
-
 const MAX_LOOKUP_PATHS = 200;
 
-// GET /api/tags — tags of the active workspace with file counts
-router.get('/', (_req, res) => {
-  const ws = getActiveWorkspace();
-  res.json(ws ? listTags(ws.id) : []);
-});
+/**
+ * Read-only tag routes (GET /, POST /lookup), shared by the admin and public
+ * apps. Only the way the workspace is resolved differs: the admin app uses
+ * the active workspace, the public app the one bound to the token (D49).
+ */
+export function createTagReadRouter(resolveWorkspaceId: (req: Request) => number | null): Router {
+  const router = Router();
 
-// POST /api/tags/lookup — current tags (auto + manual) of the given relative paths
-router.post('/lookup', (req, res) => {
-  const { paths } = req.body as { paths?: unknown };
-  if (
-    !Array.isArray(paths) ||
-    paths.length > MAX_LOOKUP_PATHS ||
-    !paths.every((p) => typeof p === 'string')
-  ) {
-    res.status(400).json({ error: `paths must be an array of at most ${MAX_LOOKUP_PATHS} strings` });
-    return;
-  }
-  const ws = getActiveWorkspace();
-  res.json({ fileTags: ws ? getTagsForPaths(ws.id, paths as string[]) : {} });
-});
+  // GET / — tags of the workspace with file counts
+  router.get('/', (req, res) => {
+    const wsId = resolveWorkspaceId(req);
+    res.json(wsId !== null ? listTags(wsId) : []);
+  });
+
+  // POST /lookup — current tags (auto + manual) of the given relative paths
+  router.post('/lookup', (req, res) => {
+    const { paths } = req.body as { paths?: unknown };
+    if (
+      !Array.isArray(paths) ||
+      paths.length > MAX_LOOKUP_PATHS ||
+      !paths.every((p) => typeof p === 'string')
+    ) {
+      res.status(400).json({ error: `paths must be an array of at most ${MAX_LOOKUP_PATHS} strings` });
+      return;
+    }
+    const wsId = resolveWorkspaceId(req);
+    res.json({ fileTags: wsId !== null ? getTagsForPaths(wsId, paths as string[]) : {} });
+  });
+
+  return router;
+}
+
+const router = createTagReadRouter(() => getActiveWorkspace()?.id ?? null);
 
 // Manual tags (D48): validated against the active workspace's index so tags
 // cannot be attached to paths outside it. Written only by the admin app.

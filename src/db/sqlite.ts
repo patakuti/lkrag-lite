@@ -98,6 +98,7 @@ export function initDb(dbPath: string): Database.Database {
 
   createSchema(db);
   migrateChatSessionsTokenId(db);
+  migrateChatMessagesFilterTags(db);
   syncFtsTable(db);
   _db = db;
   return db;
@@ -109,6 +110,15 @@ function migrateChatSessionsTokenId(db: Database.Database): void {
   const cols = db.prepare('PRAGMA table_info(chat_sessions)').all() as { name: string }[];
   if (!cols.some((c) => c.name === 'token_id')) {
     db.exec('ALTER TABLE chat_sessions ADD COLUMN token_id INTEGER REFERENCES public_tokens(id) ON DELETE SET NULL');
+  }
+}
+
+// filter_tags records the tag filter that was applied to a user message (D46);
+// added by migration for databases created before tag support.
+function migrateChatMessagesFilterTags(db: Database.Database): void {
+  const cols = db.prepare('PRAGMA table_info(chat_messages)').all() as { name: string }[];
+  if (!cols.some((c) => c.name === 'filter_tags')) {
+    db.exec('ALTER TABLE chat_messages ADD COLUMN filter_tags TEXT');
   }
 }
 
@@ -201,6 +211,30 @@ function createSchema(db: Database.Database): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_public_access_log_token ON public_access_log(token_id);
+
+    -- Document tags. file_tags follow files (regenerated on rebuild); manual_tags
+    -- are user data keyed by path with no FK to files, so they survive rebuilds.
+    CREATE TABLE IF NOT EXISTS file_tags (
+      file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+      tag     TEXT    NOT NULL,
+      PRIMARY KEY (file_id, tag)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_file_tags_tag ON file_tags(tag);
+
+    CREATE TABLE IF NOT EXISTS manual_tags (
+      workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      path         TEXT    NOT NULL,
+      tag          TEXT    NOT NULL,
+      PRIMARY KEY (workspace_id, path, tag)
+    );
+
+    CREATE VIEW IF NOT EXISTS v_file_tags AS
+      SELECT file_id, tag, 'file' AS source FROM file_tags
+      UNION ALL
+      SELECT f.id AS file_id, m.tag, 'manual' AS source
+      FROM manual_tags m
+      JOIN files f ON f.workspace_id = m.workspace_id AND f.path = m.path;
   `);
 }
 
@@ -360,6 +394,84 @@ export function deleteFile(fileId: number): void {
   del();
 }
 
+// ---------- tags ----------
+
+export type TagSource = 'file' | 'manual';
+
+export interface FileTag {
+  name: string;
+  sources: TagSource[];
+}
+
+/** Replace the automatic (file-derived) tags of a file; writes only when they differ. */
+export function replaceFileTags(fileId: number, tags: string[]): void {
+  const db = getDb();
+  const current = new Set(
+    (db.prepare('SELECT tag FROM file_tags WHERE file_id = ?').all(fileId) as { tag: string }[]).map((r) => r.tag)
+  );
+  const next = new Set(tags);
+  if (current.size === next.size && [...next].every((t) => current.has(t))) return;
+
+  const replace = db.transaction(() => {
+    db.prepare('DELETE FROM file_tags WHERE file_id = ?').run(fileId);
+    const ins = db.prepare('INSERT INTO file_tags (file_id, tag) VALUES (?, ?)');
+    for (const t of next) ins.run(fileId, t);
+  });
+  replace();
+}
+
+/** Tag → number of files having it, in the workspace (count desc, then name). */
+export function listTags(workspaceId: number): { tag: string; count: number }[] {
+  return getDb().prepare(`
+    SELECT t.tag AS tag, COUNT(DISTINCT t.file_id) AS count
+    FROM v_file_tags t
+    JOIN files f ON f.id = t.file_id
+    WHERE f.workspace_id = ?
+    GROUP BY t.tag
+    ORDER BY count DESC, t.tag
+  `).all(workspaceId) as { tag: string; count: number }[];
+}
+
+/** Current tags (both sources) of the given workspace-relative paths. Every requested path is a key. */
+export function getTagsForPaths(workspaceId: number, paths: string[]): Record<string, FileTag[]> {
+  const result: Record<string, FileTag[]> = {};
+  for (const p of paths) result[p] = [];
+  if (paths.length === 0) return result;
+
+  const rows = getDb().prepare(`
+    SELECT f.path AS path, t.tag AS tag, t.source AS source
+    FROM files f
+    JOIN v_file_tags t ON t.file_id = f.id
+    WHERE f.workspace_id = ?
+      AND f.path IN (SELECT value FROM json_each(?))
+    ORDER BY t.tag
+  `).all(workspaceId, JSON.stringify(paths)) as { path: string; tag: string; source: TagSource }[];
+
+  for (const r of rows) {
+    const list = result[r.path];
+    const existing = list.find((t) => t.name === r.tag);
+    if (existing) existing.sources.push(r.source);
+    else list.push({ name: r.tag, sources: [r.source] });
+  }
+  return result;
+}
+
+export function fileExists(workspaceId: number, filePath: string): boolean {
+  return getFile(workspaceId, filePath) !== null;
+}
+
+export function addManualTag(workspaceId: number, filePath: string, tag: string): void {
+  getDb()
+    .prepare('INSERT OR IGNORE INTO manual_tags (workspace_id, path, tag) VALUES (?, ?, ?)')
+    .run(workspaceId, filePath, tag);
+}
+
+export function removeManualTag(workspaceId: number, filePath: string, tag: string): void {
+  getDb()
+    .prepare('DELETE FROM manual_tags WHERE workspace_id = ? AND path = ? AND tag = ?')
+    .run(workspaceId, filePath, tag);
+}
+
 // ---------- chunks ----------
 
 export interface ChunkRecord {
@@ -434,9 +546,19 @@ export interface FtsResult {
   filePath: string;
 }
 
-export function searchFts(workspaceId: number, query: string, limit: number): FtsResult[] {
+// Files having ALL of the given tags (AND). Bind params: the N tags, then N.
+function tagFilesSql(n: number): string {
+  return `
+    SELECT file_id FROM v_file_tags
+    WHERE tag IN (${Array(n).fill('?').join(',')})
+    GROUP BY file_id HAVING COUNT(DISTINCT tag) = ?`;
+}
+
+export function searchFts(workspaceId: number, query: string, limit: number, tags: string[] = []): FtsResult[] {
   const db = getDb();
   const escaped = query.replace(/"/g, '""');
+  const tagClause = tags.length > 0 ? `AND c.file_id IN (${tagFilesSql(tags.length)})` : '';
+  const tagParams = tags.length > 0 ? [...tags, tags.length] : [];
   try {
     return db.prepare(`
       SELECT c.id AS chunkId, c.file_id AS fileId, c.content, c.snippet, f.path AS filePath
@@ -445,16 +567,23 @@ export function searchFts(workspaceId: number, query: string, limit: number): Ft
       JOIN files  f ON f.id = c.file_id
       WHERE fts_chunks MATCH ?
         AND c.workspace_id = ?
+        ${tagClause}
       ORDER BY bm25(fts_chunks)
       LIMIT ?
-    `).all(`"${escaped}"`, workspaceId, limit) as FtsResult[];
+    `).all(`"${escaped}"`, workspaceId, ...tagParams, limit) as FtsResult[];
   } catch {
     return [];
   }
 }
 
-export function searchChunks(workspaceId: number, queryVec: number[], topK: number): SearchResult[] {
+// With tags, restrict the KNN candidates up front via a rowid constraint (D44)
+// so the top-k is chosen among matching chunks rather than filtered afterwards.
+export function searchChunks(workspaceId: number, queryVec: number[], topK: number, tags: string[] = []): SearchResult[] {
   const db = getDb();
+  const tagClause = tags.length > 0
+    ? `AND v.rowid IN (SELECT c2.id FROM chunks c2 WHERE c2.workspace_id = ? AND c2.file_id IN (${tagFilesSql(tags.length)}))`
+    : '';
+  const tagParams = tags.length > 0 ? [BigInt(workspaceId), ...tags, tags.length] : [];
   const rows = db.prepare(`
     SELECT c.id AS chunkId, c.file_id AS fileId, c.workspace_id AS workspaceId,
            c.content, c.snippet, v.distance, f.path AS filePath
@@ -464,8 +593,9 @@ export function searchChunks(workspaceId: number, queryVec: number[], topK: numb
     WHERE v.workspace_id = ?
       AND v.embedding MATCH ?
       AND k = ?
+      ${tagClause}
     ORDER BY v.distance
-  `).all(BigInt(workspaceId), new Float32Array(queryVec), topK) as SearchResult[];
+  `).all(BigInt(workspaceId), new Float32Array(queryVec), topK, ...tagParams) as SearchResult[];
   return rows;
 }
 
@@ -506,6 +636,7 @@ export interface ChatMessage {
   role: string;
   content: string;
   citations: string | null;
+  filter_tags: string | null;
   created_at: number;
 }
 
@@ -572,13 +703,14 @@ export function appendChatMessage(
   sessionId: string,
   role: string,
   content: string,
-  citations: string | null
+  citations: string | null,
+  filterTags: string[] = []
 ): void {
   const now = Date.now();
   const db = getDb();
   db.prepare(
-    'INSERT INTO chat_messages (session_id, role, content, citations, created_at) VALUES (?, ?, ?, ?, ?)'
-  ).run(sessionId, role, content, citations, now);
+    'INSERT INTO chat_messages (session_id, role, content, citations, filter_tags, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(sessionId, role, content, citations, filterTags.length > 0 ? JSON.stringify(filterTags) : null, now);
   db.prepare('UPDATE chat_sessions SET updated_at = ? WHERE id = ?').run(now, sessionId);
 }
 

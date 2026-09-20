@@ -7,8 +7,9 @@ import { getUserConfigDir, getUserDataDir } from './config/paths.js';
 import { resolveEmbeddingConfig } from './config/providers.js';
 import {
   initDb, listWorkspaces, addWorkspace, activateWorkspace, getIndexedFileCount, getLastIndexedAt, Workspace,
-  createPublicToken, listPublicTokens, revokePublicToken,
+  createPublicToken, listPublicTokens, revokePublicToken, listTags, getTagsForPaths,
 } from './db/sqlite.js';
+import { normalizeTag } from './indexer/tags.js';
 import { runUpdateForWorkspace, runRebuildForWorkspace, getStatus, requestCancel } from './indexer/index.js';
 import { retrieveForWorkspace, RetrievedChunk } from './search/retriever.js';
 
@@ -102,25 +103,31 @@ function resolveWorkspace(opts: ResolveOptions, mode: ResolveMode): Workspace {
 
 // ---------- output formatters ----------
 
-function printPlain(results: RetrievedChunk[], quiet: boolean): void {
+type TagsByPath = Record<string, string[]>;
+
+function printPlain(results: RetrievedChunk[], tags: TagsByPath, quiet: boolean): void {
   if (results.length === 0) {
     if (!quiet) process.stderr.write('No results found.\n');
     return;
   }
   for (const r of results) {
     process.stdout.write(`[${r.n}] ${r.filePath} (score: ${r.score})\n`);
+    const t = tags[r.filePath] ?? [];
+    if (t.length > 0) process.stdout.write(`tags: ${t.join(', ')}\n`);
     process.stdout.write(`${r.snippet}\n\n`);
   }
 }
 
-function printTsv(results: RetrievedChunk[]): void {
+function printTsv(results: RetrievedChunk[], tags: TagsByPath): void {
   for (const r of results) {
-    process.stdout.write(`${r.filePath}\t1\t${r.score}\t${r.snippet.replace(/\t/g, ' ').replace(/\n/g, ' ')}\n`);
+    const snippet = r.snippet.replace(/\t/g, ' ').replace(/\n/g, ' ');
+    process.stdout.write(`${r.filePath}\t1\t${r.score}\t${snippet}\t${(tags[r.filePath] ?? []).join(',')}\n`);
   }
 }
 
-function printJson(results: RetrievedChunk[]): void {
-  process.stdout.write(JSON.stringify(results, null, 2) + '\n');
+function printJson(results: RetrievedChunk[], tags: TagsByPath): void {
+  const withTags = results.map((r) => ({ ...r, tags: tags[r.filePath] ?? [] }));
+  process.stdout.write(JSON.stringify(withTags, null, 2) + '\n');
 }
 
 // ---------- env file loader ----------
@@ -167,6 +174,11 @@ sharedOptions(
       if (isNaN(n) || n < 0 || n > 1) throw new InvalidArgumentError('Must be a number between 0 and 1.');
       return n;
     }, 0.3)
+    .option('--tag <tag>', 'only documents having this tag (repeatable; all given tags are required)', (v: string, prev: string[]) => {
+      const tag = normalizeTag(v);
+      if (tag === null) throw new InvalidArgumentError('Invalid tag (must be 1-64 chars, no whitespace, commas or #).');
+      return prev.includes(tag) ? prev : [...prev, tag];
+    }, [] as string[])
     .option('--format <fmt>', 'output format: plain, tsv, json', 'plain')
 ).action(async (query: string, opts) => {
   if (opts.envFile) loadEnvFile(opts.envFile);
@@ -178,14 +190,39 @@ sharedOptions(
   const results = await retrieveForWorkspace(query, ws.id, {
     topK: opts.limit,
     minSimilarity: opts.minSimilarity,
+    tags: opts.tag,
   });
 
+  const fileTags = getTagsForPaths(ws.id, results.map((r) => r.filePath));
+  const tags: TagsByPath = Object.fromEntries(
+    Object.entries(fileTags).map(([p, list]) => [p, list.map((t) => t.name)])
+  );
+
   if (opts.format === 'tsv') {
-    printTsv(results);
+    printTsv(results, tags);
   } else if (opts.format === 'json') {
-    printJson(results);
+    printJson(results, tags);
   } else {
-    printPlain(results, opts.quiet);
+    printPlain(results, tags, opts.quiet);
+  }
+});
+
+// ---------- tags ----------
+
+sharedOptions(
+  program
+    .command('tags')
+    .description('list document tags with the number of documents having each')
+    .option('--format <fmt>', 'output format: plain (tag<TAB>count), json', 'plain')
+).action((opts) => {
+  if (opts.envFile) loadEnvFile(opts.envFile);
+  initDbFromEnv();
+  const ws = resolveWorkspace(opts, 'require');
+  const tags = listTags(ws.id);
+  if (opts.format === 'json') {
+    process.stdout.write(JSON.stringify(tags, null, 2) + '\n');
+  } else {
+    for (const t of tags) process.stdout.write(`${t.tag}\t${t.count}\n`);
   }
 });
 

@@ -12,6 +12,7 @@ import configRouter from './routes/config.js';
 import openRouter from './routes/open.js';
 import browseRouter from './routes/browse.js';
 import chatsRouter from './routes/chats.js';
+import tagsRouter from './routes/tags.js';
 import { createPublicApp } from './publicServer.js';
 import { trackActivity, getBusyReason } from './middleware/activity.js';
 import { takeoverPort, ServerBusyError } from './takeover.js';
@@ -82,6 +83,7 @@ app.use('/api/config', configRouter);
 app.use('/api/open', openRouter);
 app.use('/api/browse', browseRouter);
 app.use('/api/chats', chatsRouter);
+app.use('/api/tags', tagsRouter);
 
 // Static frontend
 app.use(express.static(path.join(__dirname, '..', 'public')));

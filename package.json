@@ -26,7 +26,8 @@
     "officeparser": "^7.2.1",
     "pdf-parse": "^1.1.1",
     "sqlite-vec": "^0.1.9",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "yaml": "^2.9.1"
   },
   "pkg": {
     "scripts": [

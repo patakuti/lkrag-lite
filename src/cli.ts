@@ -7,9 +7,11 @@ import { getUserConfigDir, getUserDataDir } from './config/paths.js';
 import { resolveEmbeddingConfig } from './config/providers.js';
 import {
   initDb, listWorkspaces, addWorkspace, activateWorkspace, getIndexedFileCount, getLastIndexedAt, Workspace,
-  createPublicToken, listPublicTokens, revokePublicToken, listTags, getTagsForPaths,
+  createPublicToken, listPublicTokens, revokePublicToken, listTags, getTagsForPaths, listFileIds, fileExists,
+  addManualTag, removeManualTag,
 } from './db/sqlite.js';
-import { normalizeTag, mergeTagFilters } from './indexer/tags.js';
+import { normalizeTag, isReservedTag, mergeTagFilters } from './indexer/tags.js';
+import { normalizeDirArg, matchesDir, parseFileList } from './cli/bulkTag.js';
 import { getDefaultTagFilter, validateTagDefaults } from './config/tagDefaults.js';
 import { reloadFromEnv } from './config/runtime.js';
 import { runUpdateForWorkspace, runRebuildForWorkspace, getStatus, requestCancel } from './indexer/index.js';
@@ -243,6 +245,120 @@ sharedOptions(
   } else {
     for (const t of tags) process.stdout.write(`${t.tag}\t${t.count}\n`);
   }
+});
+
+// ---------- tag add / tag remove ----------
+
+function collectWritableTag(v: string, prev: string[]): string[] {
+  const tag = normalizeTag(v);
+  if (tag === null || isReservedTag(tag)) {
+    throw new InvalidArgumentError(
+      "Invalid tag (must be 1-64 chars, no whitespace, commas or #; 'ext:' and 'dir:' are reserved)."
+    );
+  }
+  return prev.includes(tag) ? prev : [...prev, tag];
+}
+
+function readFilesFrom(source: string): string[] {
+  const content = source === '-' ? fs.readFileSync(0, 'utf8') : fs.readFileSync(source, 'utf8');
+  return parseFileList(content);
+}
+
+interface BulkTagSelector {
+  dir?: string;
+  filesFrom?: string;
+}
+
+function resolveBulkTagTargets(ws: Workspace, opts: BulkTagSelector): string[] {
+  if (opts.dir !== undefined && opts.filesFrom !== undefined) {
+    process.stderr.write('Error: --dir and --files-from are mutually exclusive.\n');
+    process.exit(1);
+  }
+  if (opts.dir === undefined && opts.filesFrom === undefined) {
+    process.stderr.write('Error: either --dir or --files-from is required.\n');
+    process.exit(1);
+  }
+
+  if (opts.dir !== undefined) {
+    const dir = normalizeDirArg(opts.dir);
+    const targets = listFileIds(ws.id).map((f) => f.path).filter((p) => matchesDir(p, dir));
+    if (targets.length === 0) {
+      process.stderr.write(`Error: no indexed files under "${opts.dir}".\n`);
+      process.exit(1);
+    }
+    return targets;
+  }
+
+  const targets = readFilesFrom(opts.filesFrom!);
+  const missing = targets.filter((p) => !fileExists(ws.id, p));
+  if (missing.length > 0) {
+    process.stderr.write(`Error: not indexed: ${missing.join(', ')}\n`);
+    process.exit(1);
+  }
+  return targets;
+}
+
+function runBulkTag(ws: Workspace, opts: BulkTagSelector & { tag: string[]; dryRun?: boolean; quiet?: boolean }, mode: 'add' | 'remove'): void {
+  if (opts.tag.length === 0) {
+    process.stderr.write('Error: at least one --tag is required.\n');
+    process.exit(1);
+  }
+  const targets = resolveBulkTagTargets(ws, opts);
+  const currentTags = getTagsForPaths(ws.id, targets);
+
+  let changed = 0;
+  for (const p of targets) {
+    for (const tag of opts.tag) {
+      const hasManual = (currentTags[p] ?? []).some((t) => t.name === tag && t.sources.includes('manual'));
+      const shouldApply = mode === 'add' ? !hasManual : hasManual;
+      if (!shouldApply) continue;
+      if (opts.dryRun) {
+        process.stdout.write(`${p}\t${tag}\t${mode}\n`);
+      } else if (mode === 'add' ? addManualTag(ws.id, p, tag) : removeManualTag(ws.id, p, tag)) {
+        changed++;
+      }
+    }
+  }
+  if (!opts.quiet) {
+    const verb = mode === 'add' ? 'Added' : 'Removed';
+    process.stderr.write(
+      opts.dryRun
+        ? `Would ${mode} tags on ${targets.length} file(s).\n`
+        : `${verb} ${changed} tag(s) on ${targets.length} file(s).\n`
+    );
+  }
+}
+
+const tagCmd = program.command('tag').description('bulk add/remove tags on indexed files');
+
+sharedOptions(
+  tagCmd
+    .command('add')
+    .description('add one or more tags to indexed files under a directory or listed in a file')
+    .option('--dir <path>', 'workspace-relative directory (recursive; use "." for the whole workspace)')
+    .option('--files-from <path>', 'file of workspace-relative paths, one per line ("-" for stdin)')
+    .option('--tag <tag>', 'tag to add (repeatable; at least one required)', collectWritableTag, [] as string[])
+    .option('--dry-run', 'show what would change without writing')
+).action((opts) => {
+  if (opts.envFile) loadEnvFile(opts.envFile);
+  initDbFromEnv();
+  const ws = resolveWorkspace(opts, 'require');
+  runBulkTag(ws, opts, 'add');
+});
+
+sharedOptions(
+  tagCmd
+    .command('remove')
+    .description('remove one or more tags from indexed files under a directory or listed in a file')
+    .option('--dir <path>', 'workspace-relative directory (recursive; use "." for the whole workspace)')
+    .option('--files-from <path>', 'file of workspace-relative paths, one per line ("-" for stdin)')
+    .option('--tag <tag>', 'tag to remove (repeatable; at least one required)', collectWritableTag, [] as string[])
+    .option('--dry-run', 'show what would change without writing')
+).action((opts) => {
+  if (opts.envFile) loadEnvFile(opts.envFile);
+  initDbFromEnv();
+  const ws = resolveWorkspace(opts, 'require');
+  runBulkTag(ws, opts, 'remove');
 });
 
 // ---------- update-index ----------

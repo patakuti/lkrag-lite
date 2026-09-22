@@ -267,6 +267,7 @@ Body text. A #hashtag like this is not a tag.
 - **Existing indexes**: file and system tags are picked up by the next "Update" without re-embedding. Manual tags survive "Update" and "Full Rebuild".
 - **Renames and moves**: manual tags are attached to the file's path relative to the workspace, so renaming or moving a file detaches them (moving it back reattaches them). System tags follow the new path automatically. Deleting a workspace deletes its manual tags.
 - **Public chat**: viewers can see tags and related tags, and require / exclude tags, but cannot add or remove manual tags (admin-only).
+- **Bulk tagging (CLI)**: `lkragl tag add` / `lkragl tag remove` add or remove a manual tag on many indexed files at once — see [Commands](#commands) below. Useful for PDFs/Office files, which have no frontmatter to hand-edit.
 
 ### Hiding documents from the public chat
 
@@ -316,6 +317,8 @@ lkragl update-index         Incrementally update the index
 lkragl rebuild-index        Rebuild the entire index from scratch
 lkragl status               Show index status
 lkragl tags                 List document tags with the number of documents
+lkragl tag add              Add a tag to many indexed files at once
+lkragl tag remove           Remove a tag from many indexed files at once
 ```
 
 ### Options
@@ -326,10 +329,13 @@ lkragl tags                 List document tags with the number of documents
 | `--find-workspace` | — | Traverse up from current directory to find a registered workspace |
 | `--limit <n>` | 5 | Number of search results (`search` only) |
 | `--min-similarity <n>` | 0.3 | Minimum similarity score 0–1 (`search` only) |
-| `--tag <tag>` | — | Only documents having this tag; repeat to require several (AND) (`search` only) |
+| `--tag <tag>` | — | `search`: only documents having this tag; repeat to require several (AND). `tag add`/`tag remove`: the tag to add/remove; repeat for several; at least one required; `ext:`/`dir:` are rejected |
 | `--exclude-tag <tag>` | — | Skip documents having this tag; repeat to exclude several (`search` only) |
 | `--no-default-tags` | — | Ignore `RAG_DEFAULT_REQUIRED_TAGS` / `RAG_DEFAULT_EXCLUDE_TAGS` (`search` only) |
 | `--format <fmt>` | plain | Output format: `plain`, `tsv`, `json` (`search` only); `plain`/`json` for `tags` |
+| `--dir <path>` | — | Workspace-relative directory, recursive; use `.` for the whole workspace (`tag add`/`tag remove` only; mutually exclusive with `--files-from`, one of the two is required) |
+| `--files-from <path>` | — | File of workspace-relative paths, one per line (`#` comments and blank lines ignored); `-` reads stdin (`tag add`/`tag remove` only; mutually exclusive with `--dir`) |
+| `--dry-run` | — | Show what would change without writing (`tag add`/`tag remove` only) |
 | `--quiet` | — | Suppress informational messages on stderr |
 | `--env-file <path>` | — | Load additional .env file |
 
@@ -343,6 +349,7 @@ lkragl tags                 List document tags with the number of documents
 | `update-index` | Error | Error |
 | `rebuild-index` | **Auto-register**, index, and **activate** | Error |
 | `status` | Error | Error |
+| `tag add` / `tag remove` | Error | Error |
 
 `rebuild-index` activates the workspace upon completion so it is immediately usable from the Web UI. `update-index` does not change the active workspace (safe for cron jobs).
 
@@ -369,6 +376,15 @@ lkragl search "old design" --no-default-tags
 
 # List tags and how many documents have each
 lkragl tags
+
+# Tag every indexed file under a folder (PDFs, Office files, anything)
+lkragl tag add --dir manuals --tag confidential
+
+# Preview a bulk change first (writes nothing)
+lkragl tag remove --dir manuals --tag draft --dry-run
+
+# Tag specific files that aren't all under one folder
+printf 'manuals/policy.pdf\nother/notes.docx\n' | lkragl tag add --files-from - --tag reviewed
 
 # JSON output for scripting
 lkragl search "database schema" --format json | jq '.[0].filePath'

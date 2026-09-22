@@ -8,29 +8,36 @@ Most RAG tools treat your documents as data to be *imported* into a proprietary 
 
 Hybrid BM25 + vector search is common ground now — most tools below do some version of it, so it's not a meaningful differentiator on its own. What's less crowded is the *experience*: open a browser, chat with your files, hand a read-only link to someone outside your team, and let non-engineers use it without an account, a config file, or an API key. That's the space lkrag-lite is built for.
 
-| Feature | lkrag-lite | Dify | RAGFlow | AnythingLLM | PrivateGPT † | GPT4All (LocalDocs) |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|
-| **Search local files directly** (no upload required) | ○ | × | × | △¹ | × | ○ |
-| **Easy to reflect file changes** (incremental re-index) | ○ | × | × | △¹ | × | ○ |
-| **Citations open source files via OS** | ○ | × | × | × | × | △² |
-| **Embedded vector DB** (no separate DB server) | ○ | × | × | ○ | △³ | ○ |
-| **External dependencies** (backing services + LLM/embedding provider, default deploy path) | 1⁴ | 4⁴ | 5⁴ | 0⁴ | 2⁴ | 0⁴ |
-| **Query rewriter** (auto-rewrites follow-up questions for RAG) | ○ | △⁵ | △⁵ | × | × | × |
-| **Read-only external sharing** (link, no recipient account) | ○ | △⁶ | ×⁶ | △⁶ | × | × |
-| **End-user chat app** (vs. developer-facing API) | ○ | △ | △ | ○ | ×† | ○ |
-| **CLI tool** (search & index management for cron / editor integration) | ○ | × | × | × | △⁷ | × |
-| **Simple setup** (`npm install`, edit `.env`, `npm start` — no Docker/multi-container stack) | ○ | × | × | △⁸ | △ | △⁸ |
+| Feature | lkrag-lite | Dify | RAGFlow | AnythingLLM | PrivateGPT † | GPT4All (LocalDocs) | Open WebUI |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| **Search local files directly** (no upload required) | ○ | × | × | △¹ | × | ○ | ×⁹ |
+| **Easy to reflect file changes** (incremental re-index) | ○ | × | × | △¹ | × | ○ | ○⁹ |
+| **Citations open source files via OS** | ○ | × | × | × | × | △² | ×¹⁰ |
+| **Embedded vector DB** (no separate DB server) | ○ | × | × | ○ | △³ | ○ | ○ |
+| **External dependencies** (backing services + LLM/embedding provider, default deploy path) | 1⁴ | 4⁴ | 5⁴ | 0⁴ | 2⁴ | 0⁴ | 1⁴ |
+| **Query rewriter** (auto-rewrites follow-up questions for RAG) | ○ | △⁵ | △⁵ | × | × | × | ○¹¹ |
+| **Read-only external sharing** (link, no recipient account) | ○ | △⁶ | ×⁶ | △⁶ | × | × | △⁶ |
+| **End-user chat app** (vs. developer-facing API) | ○ | △ | △ | ○ | ×† | ○ | ○ |
+| **CLI tool** (search & index management for cron / editor integration) | ○ | × | × | × | △⁷ | × | ×¹² |
+| **Simple setup** (`npm install`, edit `.env`, `npm start` — no Docker/multi-container stack) | ○ | × | × | △⁸ | △ | △⁸ | ×¹³ |
 
 ¹ AnythingLLM: file-level watching only (beta); directory-wide indexing is not supported  
 ² GPT4All: clicking "Source" opens the referenced file per official docs; whether it launches the OS-associated app or an in-app viewer isn't specified  
 ³ PrivateGPT: embedded/serverless only when using Qdrant's local embedded mode; the documented default self-hosted path (docker-compose) runs Qdrant as its own service (see dependency count below)  
-⁴ Counts each tool's own documented/recommended getting-started path, including the LLM/embedding provider needed to actually answer a question — not just backing infrastructure. Switching to a self-hosted local model (e.g. Ollama) instead of a cloud API doesn't reduce the count; it's still one more service to run. lkrag-lite: 1 (an LLM/embedding provider — `.env.example` defaults to OpenAI, but any OpenAI-compatible endpoint including a local Ollama works the same way). Dify: 3 backing services (Postgres, Redis, Weaviate) + 1 model provider. RAGFlow: 4 backing services (Elasticsearch/Infinity, MySQL, MinIO, Redis) + 1 model provider. PrivateGPT: 1 backing service (Qdrant, default docker-compose) + 1 model provider (its own quickstart recommends a local Ollama server). AnythingLLM and GPT4All each ship a bundled local model that runs out of the box with no external account or extra service required.  
+⁴ Counts each tool's own documented/recommended getting-started path, including the LLM/embedding provider needed to actually answer a question — not just backing infrastructure. Switching to a self-hosted local model (e.g. Ollama) instead of a cloud API doesn't reduce the count; it's still one more service to run. lkrag-lite: 1 (an LLM/embedding provider — `.env.example` defaults to OpenAI, but any OpenAI-compatible endpoint including a local Ollama works the same way). Dify: 3 backing services (Postgres, Redis, Weaviate) + 1 model provider. RAGFlow: 4 backing services (Elasticsearch/Infinity, MySQL, MinIO, Redis) + 1 model provider. PrivateGPT: 1 backing service (Qdrant, default docker-compose) + 1 model provider (its own quickstart recommends a local Ollama server). AnythingLLM and GPT4All each ship a bundled local model that runs out of the box with no external account or extra service required. Open WebUI: 1 model provider — RAG embedding defaults to a bundled local `sentence-transformers` model (no external call), but chat generation still needs a connected LLM provider (local Ollama or a cloud API); both the embedding engine and model are configurable if you want to swap them.  
 ⁵ Dify / RAGFlow: achievable via workflow configuration, but not automatic out of the box  
-⁶ Dify: "Anyone with the link" access mode grants full interactive app access, not scoped read-only/citation viewing. RAGFlow: only an iframe embed widget requiring an API key from an authenticated user, not a plain public link. AnythingLLM: only a website-embeddable chat widget is documented; no standalone public share-link was found  
+⁶ Dify: "Anyone with the link" access mode grants full interactive app access, not scoped read-only/citation viewing. RAGFlow: only an iframe embed widget requiring an API key from an authenticated user, not a plain public link. AnythingLLM: only a website-embeddable chat widget is documented; no standalone public share-link was found. Open WebUI: the "Public"/"Open" share link is read-only, but it only grants access to other signed-in users of that same instance — an unauthenticated visitor is redirected to a login page, so it isn't a no-account link like lkrag-lite's  
 ⁷ PrivateGPT: CLI available but limited to basic ingestion/query; no cron-friendly index management  
 ⁸ AnythingLLM: desktop app available, but initial configuration involves multiple steps. GPT4All: single-installer desktop app, but enabling LocalDocs requires several additional manual steps (enable extensions, choose embedding device, create a collection)  
+⁹ Open WebUI syncs a local directory by **copying** it into its own internal storage ("Add Content → Sync directory", or the companion `oikb` tool for larger/scheduled syncs) — files are embedded and served from that copy, not read in place from disk. Re-syncs are incremental (SHA-256 hash comparison touches only new/changed/deleted files), which is why "reflect file changes" is ○, but the underlying model is sync-then-index, not lkrag-lite's index-in-place (see note below the table)  
+¹⁰ Open WebUI: citations reference the copy stored in its Knowledge Base, not the original file, so there's no path back to opening the source document via the OS  
+¹¹ Open WebUI: a built-in "RAG query generation" step reads the chat history and automatically decides whether/how to rewrite the query into 1–3 search queries before retrieval — no workflow configuration required  
+¹² Open WebUI: the companion `oikb` tool syncs files into a Knowledge Base; it isn't a CLI for searching/querying documents from a terminal or editor  
+¹³ Open WebUI: the officially supported install path is Docker; there's no documented single-command, non-container quickstart  
 
 > **† PrivateGPT has pivoted from an end-user document-chat app to a developer-facing, Claude-API-compatible backend.** Its own docs state "the API is the actual product," and the bundled UI exists only to test the API, not as a finished end-user tool. Comparing it row-for-row above is somewhat asymmetric — treat it as the closest available reference point in a different product category, not a like-for-like alternative.
+>
+> **Open WebUI deserves a closer look than the table alone gives it** — of all the tools here, it's the one whose scale and local-directory support come closest to lkrag-lite's territory. The key design difference is *sync (copy) vs. index-in-place*: Open WebUI's directory support works by copying files into its own Knowledge Base storage (incrementally, via hashing) and answering from that copy, while lkrag-lite indexes your files where they already live and always reflects the current file on disk — there's no second copy to fall out of sync, and no storage duplication for large document sets.
 
 ## Related Projects
 

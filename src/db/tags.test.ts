@@ -57,13 +57,13 @@ describe('manual tags', () => {
     ]);
   });
 
-  it('is idempotent on add and on remove', () => {
+  it('is idempotent on add and on remove, and reports whether a row actually changed', () => {
     file('a.pdf');
-    addManualTag(wsId, 'a.pdf', 'm');
-    addManualTag(wsId, 'a.pdf', 'm');
+    expect(addManualTag(wsId, 'a.pdf', 'm')).toBe(true);
+    expect(addManualTag(wsId, 'a.pdf', 'm')).toBe(false);
     expect(listTags(wsId)).toEqual([{ tag: 'm', count: 1 }]);
-    removeManualTag(wsId, 'a.pdf', 'm');
-    removeManualTag(wsId, 'a.pdf', 'm');
+    expect(removeManualTag(wsId, 'a.pdf', 'm')).toBe(true);
+    expect(removeManualTag(wsId, 'a.pdf', 'm')).toBe(false);
     expect(listTags(wsId)).toEqual([]);
   });
 

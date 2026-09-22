@@ -512,16 +512,20 @@ export function fileExists(workspaceId: number, filePath: string): boolean {
   return getFile(workspaceId, filePath) !== null;
 }
 
-export function addManualTag(workspaceId: number, filePath: string, tag: string): void {
-  getDb()
+/** Returns whether a new manual tag row was inserted (false if it already existed). */
+export function addManualTag(workspaceId: number, filePath: string, tag: string): boolean {
+  const info = getDb()
     .prepare('INSERT OR IGNORE INTO manual_tags (workspace_id, path, tag) VALUES (?, ?, ?)')
     .run(workspaceId, filePath, tag);
+  return info.changes > 0;
 }
 
-export function removeManualTag(workspaceId: number, filePath: string, tag: string): void {
-  getDb()
+/** Returns whether a manual tag row was actually removed (false if it wasn't there). */
+export function removeManualTag(workspaceId: number, filePath: string, tag: string): boolean {
+  const info = getDb()
     .prepare('DELETE FROM manual_tags WHERE workspace_id = ? AND path = ? AND tag = ?')
     .run(workspaceId, filePath, tag);
+  return info.changes > 0;
 }
 
 // ---------- chunks ----------

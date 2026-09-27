@@ -1,5 +1,6 @@
 import path from 'path';
 import { parse as parseYaml } from 'yaml';
+import mm from 'micromatch';
 
 const MAX_TAG_LENGTH = 64;
 
@@ -45,6 +46,20 @@ export function systemTagsForPath(relPath: string): string[] {
 
 const FRONTMATTER_RE = /^﻿?---[ \t]*\r?\n([\s\S]*?)\r?\n(?:---|\.\.\.)[ \t]*(?:\r?\n|$)/;
 
+/**
+ * Tags from a single YAML value, in the same shapes frontmatter `tags:` / `tag:`
+ * accept: an inline/block array, or a comma/space-separated string. Shared with
+ * the pattern-tags config (§19), whose values follow the same syntax.
+ */
+export function tagsFromYamlValue(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.filter((v) => typeof v === 'string' || typeof v === 'number').map(String);
+  }
+  if (typeof value === 'string') return value.split(/[,\s]+/);
+  if (typeof value === 'number') return [String(value)];
+  return [];
+}
+
 function frontmatterTags(yamlText: string): string[] {
   let data: unknown;
   try {
@@ -55,18 +70,7 @@ function frontmatterTags(yamlText: string): string[] {
   if (!data || typeof data !== 'object') return [];
   const record = data as Record<string, unknown>;
   const out: string[] = [];
-  for (const key of ['tags', 'tag']) {
-    const value = record[key];
-    if (Array.isArray(value)) {
-      for (const v of value) {
-        if (typeof v === 'string' || typeof v === 'number') out.push(String(v));
-      }
-    } else if (typeof value === 'string') {
-      out.push(...value.split(/[,\s]+/));
-    } else if (typeof value === 'number') {
-      out.push(String(value));
-    }
-  }
+  for (const key of ['tags', 'tag']) out.push(...tagsFromYamlValue(record[key]));
   return out;
 }
 
@@ -138,4 +142,26 @@ export function parseTagList(raw: string | undefined): { tags: string[]; invalid
     else tags.add(tag);
   }
   return { tags: [...tags], invalid };
+}
+
+/** One rule of a workspace's `.lkragtags.yml` (requirements §19): a glob pattern and the tags it grants. */
+export interface PatternTagRule {
+  pattern: string;
+  tags: string[];
+}
+
+/**
+ * Tags a workspace-relative path gets from `.lkragtags.yml` rules: the union of
+ * every matching pattern's tags (no priority between patterns, requirements §19.3).
+ * Rules are assumed pre-validated (loadPatternTagRules); this function does no
+ * normalization or reserved-tag filtering of its own.
+ */
+export function patternTagsForPath(relPath: string, rules: PatternTagRule[]): string[] {
+  const tags = new Set<string>();
+  for (const rule of rules) {
+    if (mm.isMatch(relPath, rule.pattern)) {
+      for (const t of rule.tags) tags.add(t);
+    }
+  }
+  return [...tags];
 }

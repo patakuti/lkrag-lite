@@ -4,7 +4,8 @@ import os from 'os';
 import path from 'path';
 import {
   initDb, ensureVecTable, addWorkspace, upsertFile, deleteFile, clearWorkspaceIndex, deleteWorkspace,
-  replaceFileTags, replaceSystemTags, listTags, getTagsForPaths, addManualTag, removeManualTag, fileExists, getDb,
+  replaceFileTags, replaceSystemTags, replacePatternTags, listTags, getTagsForPaths, addManualTag, removeManualTag,
+  fileExists, getDb,
 } from './sqlite.js';
 
 let dir: string;
@@ -154,5 +155,39 @@ describe('system tags', () => {
     expect(getTagsForPaths(wsId, ['a.md'])['a.md']).toEqual([]);
     initDb(path.join(dir, 'test.db'));
     expect(getTagsForPaths(wsId, ['a.md'])['a.md']).toEqual([{ name: 'ext:md', sources: ['system'] }]);
+  });
+});
+
+describe('pattern tags', () => {
+  it('appear with source "pattern", cascade with the file, and are counted by listTags', () => {
+    const id = file('docs/a.pdf');
+    replacePatternTags(id, ['design', 'pdf']);
+    expect(getTagsForPaths(wsId, ['docs/a.pdf'])['docs/a.pdf']).toEqual([
+      { name: 'design', sources: ['pattern'] },
+      { name: 'pdf', sources: ['pattern'] },
+    ]);
+    expect(listTags(wsId).map((t) => t.tag)).toEqual(['design', 'pdf']);
+    deleteFile(id);
+    expect(listTags(wsId)).toEqual([]);
+  });
+
+  it('replacePatternTags replaces the set and is independent of other sources', () => {
+    const id = file('a.md');
+    replaceFileTags(id, ['x']);
+    replaceSystemTags(id, ['ext:md']);
+    replacePatternTags(id, ['old']);
+    replacePatternTags(id, ['new']);
+    expect(getTagsForPaths(wsId, ['a.md'])['a.md']).toEqual([
+      { name: 'ext:md', sources: ['system'] },
+      { name: 'new', sources: ['pattern'] },
+      { name: 'x', sources: ['file'] },
+    ]);
+  });
+
+  it('merges with a manual tag of the same name into one entry with both sources', () => {
+    const id = file('a.pdf');
+    replacePatternTags(id, ['shared']);
+    addManualTag(wsId, 'a.pdf', 'shared');
+    expect(getTagsForPaths(wsId, ['a.pdf'])['a.pdf']).toEqual([{ name: 'shared', sources: ['pattern', 'manual'] }]);
   });
 });

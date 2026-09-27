@@ -12,9 +12,10 @@ import { chunk, makeSnippet } from './chunker.js';
 import {
   getFile, upsertFile, listFileIds, deleteFile,
   deleteChunksByFile, insertChunk, insertVec, insertFts,
-  clearWorkspaceIndex, getActiveWorkspace, replaceFileTags, replaceSystemTags, Workspace,
+  clearWorkspaceIndex, getActiveWorkspace, replaceFileTags, replaceSystemTags, replacePatternTags, Workspace,
 } from '../db/sqlite.js';
-import { extractMarkdownTags, systemTagsForPath } from './tags.js';
+import { extractMarkdownTags, systemTagsForPath, patternTagsForPath } from './tags.js';
+import { loadPatternTagRules } from './patternTags.js';
 import { embed, EmbeddingApiError } from '../search/embedding.js';
 
 // ---------- types ----------
@@ -87,6 +88,10 @@ async function indexWorkspace(workspaceId: number, wsPath: string, rebuild: bool
     'RAG_EXCLUDE_PATTERNS',
     ['node_modules/**', '.git/**']
   );
+
+  // Validated before any file is touched: a broken .lkragtags.yml affects tagging
+  // workspace-wide, so it aborts the whole run rather than being skipped (§19.4).
+  const patternRules = loadPatternTagRules(wsPath);
 
   const files = await fg(includePatterns, {
     cwd: wsPath,
@@ -163,6 +168,7 @@ async function indexWorkspace(workspaceId: number, wsPath: string, rebuild: bool
       // indexes built before tag support pick them up without a rebuild.
       const fileId = getFile(workspaceId, relPath)!.id;
       replaceSystemTags(fileId, systemTagsForPath(relPath));
+      replacePatternTags(fileId, patternTagsForPath(relPath, patternRules));
       if (path.extname(relPath).toLowerCase() === '.md') {
         replaceFileTags(fileId, extractMarkdownTags(fs.readFileSync(absPath, 'utf-8')));
       }

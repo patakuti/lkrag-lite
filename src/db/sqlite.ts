@@ -138,6 +138,8 @@ function refreshTagView(db: Database.Database): void {
         UNION ALL
         SELECT file_id, tag, 'system' AS source FROM system_tags
         UNION ALL
+        SELECT file_id, tag, 'pattern' AS source FROM pattern_tags
+        UNION ALL
         SELECT f.id AS file_id, m.tag, 'manual' AS source
         FROM manual_tags m
         JOIN files f ON f.workspace_id = m.workspace_id AND f.path = m.path
@@ -255,6 +257,13 @@ function createSchema(db: Database.Database): void {
 
     -- System tags (ext:/dir:) derived from the path; regenerated on every index run.
     CREATE TABLE IF NOT EXISTS system_tags (
+      file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+      tag     TEXT    NOT NULL,
+      PRIMARY KEY (file_id, tag)
+    );
+
+    -- Pattern tags (.lkragtags.yml glob rules, §19) derived from the path; regenerated on every index run.
+    CREATE TABLE IF NOT EXISTS pattern_tags (
       file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
       tag     TEXT    NOT NULL,
       PRIMARY KEY (file_id, tag)
@@ -420,14 +429,14 @@ export function deleteFile(fileId: number): void {
 
 // ---------- tags ----------
 
-export type TagSource = 'file' | 'manual' | 'system';
+export type TagSource = 'file' | 'manual' | 'system' | 'pattern';
 
 export interface FileTag {
   name: string;
   sources: TagSource[];
 }
 
-function replaceTagRows(table: 'file_tags' | 'system_tags', fileId: number, tags: string[]): void {
+function replaceTagRows(table: 'file_tags' | 'system_tags' | 'pattern_tags', fileId: number, tags: string[]): void {
   const db = getDb();
   const current = new Set(
     (db.prepare(`SELECT tag FROM ${table} WHERE file_id = ?`).all(fileId) as { tag: string }[]).map((r) => r.tag)
@@ -451,6 +460,11 @@ export function replaceFileTags(fileId: number, tags: string[]): void {
 /** Replace the path-derived system tags (ext:/dir:) of a file; writes only when they differ. */
 export function replaceSystemTags(fileId: number, tags: string[]): void {
   replaceTagRows('system_tags', fileId, tags);
+}
+
+/** Replace the `.lkragtags.yml` glob-derived tags (§19) of a file; writes only when they differ. */
+export function replacePatternTags(fileId: number, tags: string[]): void {
+  replaceTagRows('pattern_tags', fileId, tags);
 }
 
 /** Tag → number of files having it, in the workspace (count desc, then name). */

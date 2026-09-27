@@ -243,12 +243,13 @@ ready-to-paste `.env` blocks.
 
 ## Document Tags
 
-Tags let you group documents, narrow a search to a group, and leave a group out. There are three kinds:
+Tags let you group documents, narrow a search to a group, and leave a group out. There are four kinds:
 
 | Kind | Source | Editable |
 |---|---|---|
 | **File tags** (blue) | Markdown (`.md`) only: frontmatter `tags:` / `tag:` (inline list, block list, or comma/space-separated). `#tag` written in the body text is **not** imported — a `#` in prose is often a chat channel, an issue number or a heading, so tags must be written in the frontmatter. | Edit the file, then run "Update". |
 | **Manual tags** (amber) | Added in the UI on any indexed file — including PDF, Word, Excel, PowerPoint, HTML and plain text. Stored only in lkrag-lite's database; your files are never modified. | Add / remove in the UI |
+| **Pattern tags** | Glob rules in a `.lkragtags.yml` file at the workspace root — see [Pattern tags](#pattern-tags) below. | No — edit the file and run "Update" |
 | **System tags** (grey) | Derived from the file's path for every indexed file: `ext:<extension>` (lower-case, e.g. `ext:pdf`, `ext:md`) and `dir:<top-level folder>` (e.g. `dir:設計`; files directly in the workspace root get no `dir:` tag; whitespace, `,` and `#` in the folder name become `-`). | No — they follow the path automatically |
 
 ```markdown
@@ -259,7 +260,7 @@ Body text. A #hashtag like this is not a tag.
 ```
 
 - **Normalization**: tags are trimmed, lower-cased and NFKC-normalized (`Design` and `design` are the same tag). A tag is 1–64 characters with no whitespace, `,` or `#`. `a/b` is just one string; there is no hierarchy.
-- **Reserved prefixes**: `ext:` and `dir:` belong to system tags. A document or a manual tag cannot use them (the tag is ignored / rejected), so a system tag can always be trusted in a filter.
+- **Reserved prefixes**: `ext:` and `dir:` belong to system tags. A document, a manual tag or a pattern tag rule cannot use them (the tag is ignored / rejected), so a system tag can always be trusted in a filter.
 - **In the chat UI**: each reference shows its file's tags (system tags last, greyed out, not removable). Type in a reference's `+ tag` box to add a manual tag (autocomplete offers existing tags) and click `✕` on a manual tag to remove it. Below each answer, **Related tags** lists the tags of the cited documents (with the number of documents; system tags are left out to avoid noise). Click a tag to ask the same question again limited to it, or click the `−` next to it to ask again *excluding* it. The new turn is added and the previous answer stays for comparison.
 - **Tag filter**: the row above the input box limits every question in the current chat.
   - `tag` requires it: a document must have **all** required tags (AND).
@@ -271,10 +272,29 @@ Body text. A #hashtag like this is not a tag.
   - CLI: `lkragl search` applies them unless `--no-default-tags` is given.
   - They are read when the server starts (restart after changing; "Reload .env" does not apply). The server and the CLI refuse to start if an entry is invalid (e.g. contains whitespace) or a tag is in both lists, rather than silently ignoring it.
   - **Public chat: enforced** — see below.
-- **Existing indexes**: file and system tags are picked up by the next "Update" without re-embedding. Manual tags survive "Update" and "Full Rebuild".
-- **Renames and moves**: manual tags are attached to the file's path relative to the workspace, so renaming or moving a file detaches them (moving it back reattaches them). System tags follow the new path automatically. Deleting a workspace deletes its manual tags.
+- **Existing indexes**: file, pattern and system tags are picked up by the next "Update" without re-embedding. Manual tags survive "Update" and "Full Rebuild".
+- **Renames and moves**: manual tags are attached to the file's path relative to the workspace, so renaming or moving a file detaches them (moving it back reattaches them). System tags and pattern tags follow the new path automatically. Deleting a workspace deletes its manual tags.
 - **Public chat**: viewers can see tags and related tags, and require / exclude tags, but cannot add or remove manual tags (admin-only).
 - **Bulk tagging (CLI)**: `lkragl tag add` / `lkragl tag remove` add or remove a manual tag on many indexed files at once — see [Commands](#commands) below. Useful for PDFs/Office files, which have no frontmatter to hand-edit.
+
+### Pattern tags
+
+Put a `.lkragtags.yml` file at the root of a workspace to tag files by path pattern — useful for grouping files that have no frontmatter (PDF, Office) across whole folders, or across extensions, without tagging each file by hand. It maps a glob pattern to one or more tags:
+
+```yaml
+"docs/**": [design, spec]
+"archive/**": obsolete
+"**/*.pdf": pdf
+```
+
+- **Re-read every time you index**: this workspace's `.lkragtags.yml` is loaded fresh at the start of every "Update" and "Full Rebuild" (admin UI) / `lkragl update-index` and `lkragl rebuild-index` (CLI) — not just once. Edit the file, then run one of these, and tags are recomputed for every file in that run.
+- Patterns are matched against the file's path relative to the workspace root (`/` as the separator), using the same glob syntax as `RAG_INCLUDE_PATTERNS` (fast-glob/micromatch; `**` matches across folders).
+- In YAML, a value starting with `*` is an alias unless quoted — always quote patterns that start with `*`, as in the examples above.
+- **All** matching patterns apply; their tags are combined (there is no priority between patterns). Tag values follow the same syntax as frontmatter `tags:` (inline list, or comma/space-separated string).
+- `ext:` / `dir:` tags are reserved for system tags and cannot be used here (same rule as manual and file tags).
+- Not removable from the UI (like system tags), but unlike system tags they **do** show up in "Related tags", since they're a meaningful category you named rather than incidental path noise.
+- The file is not indexed as a document itself (dotfiles are excluded from indexing by default).
+- A broken file (invalid YAML, not a mapping, an empty pattern, or an invalid/reserved tag) fails the whole index run with an error, rather than silently skipping — a misconfigured rule can affect every file in the workspace.
 
 ### Hiding documents from the public chat
 

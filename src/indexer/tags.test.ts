@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeTag, normalizeTagList, extractMarkdownTags, systemTagsForPath, isReservedTag, normalizeTagFilter, mergeTagFilters, isEmptyTagFilter } from './tags.js';
+import {
+  normalizeTag, normalizeTagList, extractMarkdownTags, systemTagsForPath, isReservedTag,
+  normalizeTagFilter, mergeTagFilters, isEmptyTagFilter, tagsFromYamlValue, patternTagsForPath,
+} from './tags.js';
 
 describe('normalizeTag', () => {
   it('strips #, trims, lowercases', () => {
@@ -130,5 +133,46 @@ describe('TagFilter helpers', () => {
   it('isEmptyTagFilter', () => {
     expect(isEmptyTagFilter({ include: [], exclude: [] })).toBe(true);
     expect(isEmptyTagFilter({ include: [], exclude: ['x'] })).toBe(false);
+  });
+});
+
+describe('tagsFromYamlValue', () => {
+  it('reads an inline array, dropping non-string/number entries', () => {
+    expect(tagsFromYamlValue(['a', 1, null, true, 'b'])).toEqual(['a', '1', 'b']);
+  });
+  it('splits a comma/space separated string', () => {
+    expect(tagsFromYamlValue('a, b c')).toEqual(['a', 'b', 'c']);
+  });
+  it('accepts a single number', () => {
+    expect(tagsFromYamlValue(42)).toEqual(['42']);
+  });
+  it('returns [] for undefined, null, objects, booleans', () => {
+    expect(tagsFromYamlValue(undefined)).toEqual([]);
+    expect(tagsFromYamlValue(null)).toEqual([]);
+    expect(tagsFromYamlValue({ a: 1 })).toEqual([]);
+    expect(tagsFromYamlValue(true)).toEqual([]);
+  });
+});
+
+describe('patternTagsForPath (requirements §19.3)', () => {
+  it('unions the tags of every matching rule', () => {
+    const rules = [
+      { pattern: 'docs/**', tags: ['design', 'spec'] },
+      { pattern: '**/*.pdf', tags: ['pdf'] },
+    ];
+    expect(patternTagsForPath('docs/a/report.pdf', rules)).toEqual(['design', 'spec', 'pdf']);
+    expect(patternTagsForPath('docs/x.md', rules)).toEqual(['design', 'spec']);
+    expect(patternTagsForPath('archive/x.pdf', rules)).toEqual(['pdf']);
+  });
+  it('de-duplicates a tag granted by more than one matching rule', () => {
+    const rules = [
+      { pattern: 'docs/**', tags: ['shared'] },
+      { pattern: '**/*.md', tags: ['shared', 'md'] },
+    ];
+    expect(patternTagsForPath('docs/x.md', rules)).toEqual(['shared', 'md']);
+  });
+  it('returns [] when nothing matches or there are no rules', () => {
+    expect(patternTagsForPath('other/x.md', [{ pattern: 'docs/**', tags: ['design'] }])).toEqual([]);
+    expect(patternTagsForPath('docs/x.md', [])).toEqual([]);
   });
 });

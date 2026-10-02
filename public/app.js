@@ -252,11 +252,14 @@ async function loadIndexStats() {
 // ---------- Index ----------
 
 let pollTimer = null;
+let indexingLabel = 'Checking for updates...';
 
 async function startIndexing(type) {
   clearIndexError();
   try {
     await api('POST', `/index/${type}`);
+    indexingLabel = type === 'rebuild' ? 'Rebuilding index...' : 'Checking for updates...';
+    document.getElementById('index-stats').textContent = indexingLabel;
     startPolling();
     updateIndexButtons(true);
   } catch (err) {
@@ -282,7 +285,7 @@ async function pollStatus() {
     if (s.state === 'indexing') {
       el.textContent = s.total > 0
         ? `Indexing...  ${s.processed} / ${s.total}${s.currentFile ? '  —  ' + s.currentFile : ''}`
-        : 'Indexing...';
+        : indexingLabel;
     } else {
       clearInterval(pollTimer);
       pollTimer = null;

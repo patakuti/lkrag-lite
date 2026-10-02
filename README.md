@@ -173,7 +173,12 @@ live re-index after an edit) end to end:
 | `EMBEDDING_BASE_URL` | `http://localhost:4000/v1` | Base URL used only when `EMBEDDING_PROVIDER=openai-compatible` (e.g. `http://localhost:11434/v1` for Ollama, `http://localhost:8080/v1` for llama.cpp's `llama-server`) |
 | `EMBEDDING_QUERY_PREFIX` | _(empty)_ | Prefix prepended to query text before embedding (some models require e.g. `"query: "`) |
 | `EMBEDDING_DOCUMENT_PREFIX` | _(empty)_ | Prefix prepended to document text before embedding (some models require e.g. `"passage: "`) |
-| `EMBEDDING_BATCH_SIZE` | `500` | Number of texts embedded per API call |
+| `EMBEDDING_BATCH_SIZE` | `500` | Number of texts embedded per API call. See the note below for how to choose it |
+
+> **Choosing `EMBEDDING_BATCH_SIZE`**: each batch is sent as one `POST /embeddings` request.
+> - **GPU or hosted API (e.g. OpenAI)**: the server embeds the texts of a batch together, so a larger value is faster. Keep it within the server's per-request input limit and GPU memory.
+> - **CPU inference** (e.g. Infinity with `--device cpu`): batching gives no speedup — measured with `cl-nagoya/ruri-v3-310m` on CPU, the time per chunk was lowest at batch size 1-2 and grew with larger batches. Use a small value such as `2`-`5`.
+> - **Request timeout**: if one request takes longer than 300 s, indexing aborts with `Embedding API unreachable ... UND_ERR_HEADERS_TIMEOUT (Headers Timeout Error)`. The server's health check can still be OK, because it does not run inference. Lower the batch size to fix it.
 
 > **`*_BASE_URL` gotcha**: this app always sends `POST {BASE_URL}/embeddings` (and `{BASE_URL}/chat/completions` for LLM/Rewriter) — the OpenAI-compatible route. Set `*_BASE_URL` to the API root the server exposes that route under (usually ending in `/v1`), **not** a vendor-specific native endpoint path (e.g. llama.cpp's own `/embedding`). If you point it at the wrong path, you'll get a 404 whose message now includes the exact URL that was requested — use that to spot a doubled or wrong path.
 
